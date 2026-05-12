@@ -19,12 +19,15 @@ import io.micronaut.aop.ConstructorInvocationContext;
 import io.micronaut.aop.Interceptor;
 import io.micronaut.aop.InterceptorKind;
 import io.micronaut.aop.InvocationContext;
+import io.micronaut.core.annotation.AnnotationMetadata;
 import io.micronaut.core.beans.BeanConstructor;
 import io.micronaut.core.type.Argument;
 import io.micronaut.inject.AdvisedBeanType;
 import io.micronaut.inject.BeanDefinition;
 import io.micronaut.inject.ConstructorInjectionPoint;
 import io.micronaut.inject.ExecutableMethod;
+import io.micronaut.inject.annotation.AnnotationMetadataHierarchy;
+import org.eclipse.odi.cdi.annotation.OdiConstructorTarget;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
@@ -39,6 +42,8 @@ import java.util.Arrays;
  * @param <B> the bean type
  */
 final class ConstructorInvocationContextAdapter<B> extends InvocationContextAdapter<B> {
+
+    private static final int ADDITIONAL_PROXY_CONSTRUCTOR_PARAMETERS = 5;
 
     private Object constructorTarget;
 
@@ -66,11 +71,19 @@ final class ConstructorInvocationContextAdapter<B> extends InvocationContextAdap
         Class<?>[] args = Arrays.stream(constructor.getArguments())
                 .map(Argument::getType)
                 .toArray(Class[]::new);
-        if (constructor instanceof ConstructorInjectionPoint) {
+        AnnotationMetadata constructorMetadata = constructor.getAnnotationMetadata();
+        Class<?> metadataDeclaringBeanType = constructorMetadata.classValue(OdiConstructorTarget.class).orElse(null);
+        if (metadataDeclaringBeanType != null) {
+            declaringBeanType = metadataDeclaringBeanType;
+            int additionalProxyParameters = constructorMetadata
+                    .intValue(OdiConstructorTarget.class, "additionalProxyParameters")
+                    .orElse(ADDITIONAL_PROXY_CONSTRUCTOR_PARAMETERS);
+            args = stripProxyArguments(args, additionalProxyParameters);
+        } else if (constructor instanceof ConstructorInjectionPoint) {
             final BeanDefinition<?> declaringBean = ((ConstructorInjectionPoint<?>) constructor).getDeclaringBean();
             if (declaringBean instanceof AdvisedBeanType) {
                 declaringBeanType = ((AdvisedBeanType<?>) declaringBean).getInterceptedType();
-                args = Arrays.copyOfRange(args, 0, args.length - 4);
+                args = stripProxyArguments(args, ADDITIONAL_PROXY_CONSTRUCTOR_PARAMETERS);
             }
         }
 
@@ -81,6 +94,13 @@ final class ConstructorInvocationContextAdapter<B> extends InvocationContextAdap
             throw new IllegalStateException("Constructor advice missing reflection information for constructor: " + e
                     .getMessage(), e);
         }
+    }
+
+    private Class<?>[] stripProxyArguments(Class<?>[] args, int additionalProxyParameters) {
+        if (additionalProxyParameters > 0 && args.length >= additionalProxyParameters) {
+            return Arrays.copyOfRange(args, 0, args.length - additionalProxyParameters);
+        }
+        return args;
     }
 
     @Override
@@ -97,6 +117,20 @@ final class ConstructorInvocationContextAdapter<B> extends InvocationContextAdap
 
     public Object getConstructorTarget() {
         return constructorTarget;
+    }
+
+    @Override
+    protected AnnotationMetadata getInterceptorBindingMetadata() {
+        ConstructorInvocationContext<?> cic = (ConstructorInvocationContext<?>) invocationContext;
+        BeanConstructor<?> constructor = cic.getConstructor();
+        if (constructor instanceof ConstructorInjectionPoint<?> constructorInjectionPoint) {
+            BeanDefinition<?> declaringBean = constructorInjectionPoint.getDeclaringBean();
+            return new AnnotationMetadataHierarchy(
+                    declaringBean.getAnnotationMetadata(),
+                    constructor.getAnnotationMetadata()
+            );
+        }
+        return constructor.getAnnotationMetadata();
     }
 
     @Override

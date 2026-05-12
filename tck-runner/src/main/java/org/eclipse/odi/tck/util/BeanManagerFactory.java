@@ -34,6 +34,7 @@ import jakarta.enterprise.inject.spi.Bean;
 import jakarta.enterprise.inject.spi.BeanAttributes;
 import jakarta.enterprise.inject.spi.BeanContainer;
 import jakarta.enterprise.inject.spi.BeanManager;
+import jakarta.enterprise.inject.spi.CDI;
 import jakarta.enterprise.inject.spi.Decorator;
 import jakarta.enterprise.inject.spi.Extension;
 import jakarta.enterprise.inject.spi.InjectionPoint;
@@ -46,6 +47,7 @@ import jakarta.enterprise.inject.spi.ProducerFactory;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Type;
+import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 
@@ -59,7 +61,7 @@ public class BeanManagerFactory {
     @Default
     @Dependent
     @io.micronaut.context.annotation.Bean(typed = BeanManager.class)
-    final BeanManager createBeanManager(BeanContainer beanContainer) {
+    final BeanManager createBeanManager() {
         return new BeanManager() {
             @Override
             public Bean<?> getPassivationCapableBean(String id) {
@@ -73,7 +75,7 @@ public class BeanManagerFactory {
 
             @Override
             public <T> Set<ObserverMethod<? super T>> resolveObserverMethods(T event, Annotation... qualifiers) {
-                return beanContainer.resolveObserverMethods(event, qualifiers);
+                return beanContainer().resolveObserverMethods(event, qualifiers);
             }
 
             @Override
@@ -188,7 +190,7 @@ public class BeanManagerFactory {
 
             @Override
             public Object getReference(Bean<?> bean, Type beanType, CreationalContext<?> ctx) {
-                return beanContainer.getReference(bean, beanType, ctx);
+                return beanContainer().getReference(bean, beanType, ctx);
             }
 
             @Override
@@ -198,68 +200,93 @@ public class BeanManagerFactory {
 
             @Override
             public <T> CreationalContext<T> createCreationalContext(Contextual<T> contextual) {
-                return beanContainer.createCreationalContext(contextual);
+                return beanContainer().createCreationalContext(contextual);
             }
 
             @Override
             public Set<Bean<?>> getBeans(Type beanType, Annotation... qualifiers) {
-                return beanContainer.getBeans(beanType, qualifiers);
+                return beanContainer().getBeans(beanType, qualifiers);
             }
 
             @Override
             public Set<Bean<?>> getBeans(String name) {
-                return beanContainer.getBeans(name);
+                return beanContainer().getBeans(name);
             }
 
             @Override
             public <X> Bean<? extends X> resolve(Set<Bean<? extends X>> beans) {
-                return beanContainer.resolve(beans);
+                return beanContainer().resolve(beans);
             }
 
             @Override
             public List<Interceptor<?>> resolveInterceptors(InterceptionType type, Annotation... interceptorBindings) {
-                return beanContainer.resolveInterceptors(type, interceptorBindings);
+                return beanContainer().resolveInterceptors(type, interceptorBindings);
             }
 
             @Override
             public boolean isScope(Class<? extends Annotation> annotationType) {
-                return beanContainer.isScope(annotationType);
+                return beanContainer().isScope(annotationType);
             }
 
             @Override
             public boolean isNormalScope(Class<? extends Annotation> annotationType) {
-                return beanContainer.isNormalScope(annotationType);
+                return beanContainer().isNormalScope(annotationType);
             }
 
             @Override
             public boolean isQualifier(Class<? extends Annotation> annotationType) {
-                return beanContainer.isQualifier(annotationType);
+                return beanContainer().isQualifier(annotationType);
             }
 
             @Override
             public boolean isStereotype(Class<? extends Annotation> annotationType) {
-                return beanContainer.isStereotype(annotationType);
+                return beanContainer().isStereotype(annotationType);
             }
 
             @Override
             public boolean isInterceptorBinding(Class<? extends Annotation> annotationType) {
-                return beanContainer.isInterceptorBinding(annotationType);
+                return beanContainer().isInterceptorBinding(annotationType);
             }
 
             @Override
             public Context getContext(Class<? extends Annotation> scopeType) {
-                return beanContainer.getContext(scopeType);
+                return beanContainer().getContext(scopeType);
+            }
+
+            @Override
+            public Collection<Context> getContexts(Class<? extends Annotation> scopeType) {
+                return beanContainer().getContexts(scopeType);
             }
 
             @Override
             public Event<Object> getEvent() {
-                return beanContainer.getEvent();
+                return beanContainer().getEvent();
             }
 
             @Override
             public Instance<Object> createInstance() {
-                return beanContainer.createInstance();
+                return beanContainer().createInstance();
+            }
+
+            @Override
+            public boolean isMatchingBean(Set<Type> beanTypes,
+                                          Set<Annotation> beanQualifiers,
+                                          Type requiredType,
+                                          Set<Annotation> requiredQualifiers) {
+                return beanContainer().isMatchingBean(beanTypes, beanQualifiers, requiredType, requiredQualifiers);
+            }
+
+            @Override
+            public boolean isMatchingEvent(Type eventType,
+                                           Set<Annotation> eventQualifiers,
+                                           Type observedEventType,
+                                           Set<Annotation> observedEventQualifiers) {
+                return beanContainer().isMatchingEvent(eventType, eventQualifiers, observedEventType, observedEventQualifiers);
             }
         };
+    }
+
+    private static BeanContainer beanContainer() {
+        return CDI.current().getBeanContainer();
     }
 }

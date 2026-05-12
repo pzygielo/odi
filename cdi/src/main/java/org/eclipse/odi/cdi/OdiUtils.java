@@ -21,7 +21,9 @@ import io.micronaut.core.annotation.Internal;
 import io.micronaut.core.type.Argument;
 import io.micronaut.inject.BeanDefinition;
 import io.micronaut.inject.InjectionPoint;
+import jakarta.enterprise.inject.build.compatible.spi.InvokerInfo;
 import jakarta.enterprise.inject.build.compatible.spi.Parameters;
+import jakarta.enterprise.invoke.Invoker;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -61,9 +63,18 @@ public final class OdiUtils {
                 );
             }
         }
+        Map<String, Object> syntheticParameters = map.getOrDefault(
+                OdiSyntheticParameters.PROPERTY,
+                AnnotationValue.builder(Property.class).build()
+        ).stringValue()
+                .map(OdiSyntheticParameters::find)
+                .orElse(Map.of());
         return new Parameters() {
             @Override
             public <T> T get(String key, Class<T> type) {
+                if (syntheticParameters.containsKey(key)) {
+                    return convert(syntheticParameters.get(key), type);
+                }
                 final AnnotationValue<Property> av = map.get(key);
                 if (av != null) {
                     return av.getValue(type).orElse(null);
@@ -73,6 +84,10 @@ public final class OdiUtils {
 
             @Override
             public <T> T get(String key, Class<T> type, T defaultValue) {
+                if (syntheticParameters.containsKey(key)) {
+                    T value = convert(syntheticParameters.get(key), type);
+                    return value == null ? defaultValue : value;
+                }
                 final AnnotationValue<Property> av = map.get(key);
                 if (av != null) {
                     return av.getValue(type).orElse(defaultValue);
@@ -80,5 +95,27 @@ public final class OdiUtils {
                 return defaultValue;
             }
         };
+    }
+
+    private static <T> T convert(Object value, Class<T> type) {
+        if (value == null) {
+            return null;
+        }
+        if (type.isInstance(value)) {
+            return type.cast(value);
+        }
+        if (type == Invoker[].class && value instanceof InvokerInfo[]) {
+            InvokerInfo[] infos = (InvokerInfo[]) value;
+            Invoker[] invokers = new Invoker[infos.length];
+            for (int i = 0; i < infos.length; i++) {
+                if (infos[i] instanceof Invoker) {
+                    invokers[i] = (Invoker) infos[i];
+                } else {
+                    return null;
+                }
+            }
+            return type.cast(invokers);
+        }
+        return null;
     }
 }

@@ -22,6 +22,8 @@ import io.micronaut.inject.ExecutableMethod;
 import io.micronaut.inject.qualifiers.Qualifiers;
 import jakarta.enterprise.event.ObserverException;
 import jakarta.enterprise.event.Reception;
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.context.spi.Context;
 import jakarta.enterprise.inject.spi.Bean;
 import jakarta.enterprise.inject.spi.EventContext;
 import jakarta.enterprise.inject.spi.EventMetadata;
@@ -53,6 +55,7 @@ final class ExecutableObserverMethod<B, E> extends AbstractOdiObserverMethod<E> 
     private final ExecutableMethod<B, Object> executableMethod;
     private final Argument<E> eventArgument;
     private final io.micronaut.context.Qualifier<E> eventQualifier;
+    private final boolean staticMethod;
     private Set<Annotation> observedQualifiers;
 
     ExecutableObserverMethod(OdiBeanContainer beanContainer,
@@ -67,6 +70,7 @@ final class ExecutableObserverMethod<B, E> extends AbstractOdiObserverMethod<E> 
         int eventArgumentsIndex = observesMethodAnnotationValue.intValue("eventArgumentIndex").getAsInt();
         this.eventArgument = Objects.requireNonNull((Argument<E>) executableMethod.getArguments()[eventArgumentsIndex]);
         this.eventQualifier = Qualifiers.forArgument(eventArgument);
+        this.staticMethod = observesMethodAnnotationValue.booleanValue("staticMethod").orElse(false);
     }
 
     @Override
@@ -112,6 +116,9 @@ final class ExecutableObserverMethod<B, E> extends AbstractOdiObserverMethod<E> 
         if (getReception() == Reception.IF_EXISTS && !beanContainer.getBeanContext().containsBean(beanDefinition.asArgument())) {
             return;
         }
+        if (!staticMethod && !isObserverContextActive()) {
+            return;
+        }
         try {
             beanContainer.fulfillAndExecuteMethod(beanDefinition, executableMethod, argument -> {
                 if (Objects.equals(argument, eventArgument)) {
@@ -138,12 +145,21 @@ final class ExecutableObserverMethod<B, E> extends AbstractOdiObserverMethod<E> 
                     return eventContext.getMetadata();
                 }
                 return null;
-            });
+            }, staticMethod);
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
             throw new ObserverException(e);
         }
+    }
+
+    private boolean isObserverContextActive() {
+        Bean<?> bean = getDeclaringBean();
+        Class<? extends Annotation> scope = bean.getScope();
+        if (scope == Dependent.class) {
+            return true;
+        }
+        return beanContainer.getContexts(scope).stream().anyMatch(Context::isActive);
     }
 
     @Override

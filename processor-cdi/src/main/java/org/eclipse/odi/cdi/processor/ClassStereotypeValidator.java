@@ -56,9 +56,16 @@ public class ClassStereotypeValidator implements TypeElementVisitor<Object, Ster
 
     private void validateBean(Element element, VisitorContext context) {
         final List<String> stereotypes = element.getAnnotationNamesByStereotype(Stereotype.class);
-        validateScopes(element, context, stereotypes);
+        List<String> scopes = validateScopes(element, context, stereotypes);
         validateQualifiers(element, context, stereotypes);
         validateTyped(element, context, stereotypes);
+        if (element instanceof ClassElement && !((ClassElement) element).isInterface()) {
+            if (scopes.isEmpty()) {
+                element.annotate(Dependent.class);
+            }
+            CdiUtil.visitBeanDefinition(context, element);
+            CdiUtil.visitPriority(context, (ClassElement) element);
+        }
     }
 
     private void validateTyped(Element element, VisitorContext context, List<String> stereotypes) {
@@ -75,12 +82,13 @@ public class ClassStereotypeValidator implements TypeElementVisitor<Object, Ster
         }
     }
 
-    private void validateScopes(Element element, VisitorContext context, List<String> stereotypes) {
+    private List<String> validateScopes(Element element, VisitorContext context, List<String> stereotypes) {
         final List<String> scopes = resolveDeclaredScopes(element, stereotypes);
         if (scopes.size() > 1) {
             if (scopes.size() == 2 && scopes.contains(Dependent.class.getName())) {
                 element.removeAnnotation(Dependent.class);
-                return;
+                scopes.remove(Dependent.class.getName());
+                return scopes;
             }
             context.fail("Inherited stereotypes [" + CdiUtil
                                  .toAnnotationDescription(stereotypes) + "] include more than one defined scope: " + CdiUtil
@@ -88,6 +96,7 @@ public class ClassStereotypeValidator implements TypeElementVisitor<Object, Ster
                                  + "the type.",
                          element);
         }
+        return scopes;
     }
 
     private void validateQualifiers(Element element, VisitorContext context, List<String> stereotypes) {

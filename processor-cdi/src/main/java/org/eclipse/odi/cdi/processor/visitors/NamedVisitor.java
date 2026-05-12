@@ -17,6 +17,7 @@ package org.eclipse.odi.cdi.processor.visitors;
 
 import org.eclipse.odi.cdi.processor.AnnotationUtil;
 import org.eclipse.odi.cdi.processor.CdiUtil;
+import io.micronaut.core.naming.NameUtils;
 import io.micronaut.core.util.StringUtils;
 import io.micronaut.inject.ast.ClassElement;
 import io.micronaut.inject.ast.ConstructorElement;
@@ -44,6 +45,7 @@ public class NamedVisitor implements TypeElementVisitor<Object, Object> {
 
     @Override
     public void visitClass(ClassElement element, VisitorContext context) {
+        applyCdiDefaultName(element);
         validateElement(element, context);
     }
 
@@ -72,6 +74,7 @@ public class NamedVisitor implements TypeElementVisitor<Object, Object> {
 
     @Override
     public void visitMethod(MethodElement element, VisitorContext context) {
+        applyCdiDefaultName(element);
         validatedNamedIfPresent(element, context);
         for (ParameterElement parameter : element.getParameters()) {
             validateElement(parameter, context);
@@ -87,8 +90,72 @@ public class NamedVisitor implements TypeElementVisitor<Object, Object> {
 
     @Override
     public void visitField(FieldElement element, VisitorContext context) {
+        applyCdiDefaultName(element);
         validatedNamedIfPresent(element, context);
         validateElement(element, context);
+    }
+
+    private static void applyCdiDefaultName(Element element) {
+        if (isNamedByStereotype(element)) {
+            element.annotate(AnnotationUtil.ANN_NAMED_BY_STEREOTYPE);
+        }
+        if (element.hasDeclaredAnnotation(AnnotationUtil.ANN_NAME)
+                && element.stringValue(AnnotationUtil.ANN_NAME).isEmpty()
+                && isBeanNamingElement(element)) {
+            element.annotate(AnnotationUtil.ANN_NAME, builder -> builder.value(cdiDefaultBeanName(element)));
+        }
+    }
+
+    private static boolean isNamedByStereotype(Element element) {
+        if (element.hasAnnotation(AnnotationUtil.ANN_NAME)) {
+            return false;
+        }
+        List<String> stereotypes = element.getAnnotationNamesByStereotype(Stereotype.class);
+        if (stereotypes.isEmpty()) {
+            return false;
+        }
+        List<String> namedStereotypes = element.getAnnotationNamesByStereotype(AnnotationUtil.ANN_NAME);
+        return !namedStereotypes.isEmpty() && stereotypes.containsAll(namedStereotypes);
+    }
+
+    private static boolean isBeanNamingElement(Element element) {
+        if (element instanceof ClassElement) {
+            return !((ClassElement) element).isInterface();
+        }
+        return true;
+    }
+
+    private static String cdiDefaultBeanName(Element element) {
+        String name;
+        if (element instanceof ClassElement) {
+            name = element.getSimpleName();
+        } else if (element instanceof MethodElement) {
+            String methodName = element.getName();
+            if (NameUtils.isGetterName(methodName)) {
+                name = NameUtils.getPropertyNameForGetter(methodName);
+            } else {
+                name = methodName;
+            }
+        } else {
+            name = element.getName();
+        }
+        return lowerFirstCodePoint(name);
+    }
+
+    private static String lowerFirstCodePoint(String name) {
+        if (name.isEmpty()) {
+            return name;
+        }
+        int firstCodePoint = name.codePointAt(0);
+        int lowerFirstCodePoint = Character.toLowerCase(firstCodePoint);
+        if (firstCodePoint == lowerFirstCodePoint) {
+            return name;
+        }
+        int firstCodePointLength = Character.charCount(firstCodePoint);
+        return new StringBuilder(name.length())
+                .appendCodePoint(lowerFirstCodePoint)
+                .append(name.substring(firstCodePointLength))
+                .toString();
     }
 
     private void validatedNamedIfPresent(Element element, VisitorContext context) {

@@ -17,25 +17,13 @@ package io.micronaut.annotation.processing.visitor;
 
 import io.micronaut.inject.ast.ClassElement;
 
-import javax.lang.model.type.TypeMirror;
 import javax.lang.model.type.WildcardType;
-import java.util.Map;
 
 /**
  * Needs to be addressed in the core.
  */
 public final class JavaClassElementHelper {
     private JavaClassElementHelper() {
-    }
-
-    /**
-     * Method to get the generic info.
-     * @param classElement The class element
-     * @return A map of generics
-     */
-    // TODO: Replace with new generics API
-    public static Map<String, Map<String, TypeMirror>> getGenericTypeInfo(JavaClassElement classElement) {
-        return classElement.getGenericTypeInfo();
     }
 
     public static boolean isEmptyUpperBoundOfWildcard(ClassElement classElement, int boundIndex) {
@@ -52,6 +40,16 @@ public final class JavaClassElementHelper {
             return wildcardType.getSuperBound() == null;
         }
         return false;
+    }
+
+    public static boolean isRawClassElement(ClassElement classElement) {
+        if (classElement instanceof JavaClassElement) {
+            JavaClassElement javaClassElement = (JavaClassElement) classElement;
+            return javaClassElement.typeArguments != null
+                    && javaClassElement.typeArguments.isEmpty()
+                    && !javaClassElement.classElement.getTypeParameters().isEmpty();
+        }
+        return classElement.isRawType();
     }
 
 }

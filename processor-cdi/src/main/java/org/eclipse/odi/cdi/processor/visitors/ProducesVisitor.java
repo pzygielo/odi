@@ -16,8 +16,8 @@
 package org.eclipse.odi.cdi.processor.visitors;
 
 import io.micronaut.context.annotation.Bean;
-import io.micronaut.context.annotation.Executable;
 import io.micronaut.context.annotation.Factory;
+import io.micronaut.core.annotation.Nullable;
 import io.micronaut.core.annotation.ReflectiveAccess;
 import io.micronaut.inject.ast.ClassElement;
 import io.micronaut.inject.ast.FieldElement;
@@ -83,8 +83,8 @@ public class ProducesVisitor implements TypeElementVisitor<Object, Produces> {
             // Producers aren't inherited
             return;
         }
-        if (element.isStatic()) {
-            element.annotate(Executable.class);
+        if (!CdiUtil.isBeanClass(currentClass)) {
+            return;
         }
         if (element.isPrivate()) {
             element.annotate(ReflectiveAccess.class);
@@ -93,6 +93,9 @@ public class ProducesVisitor implements TypeElementVisitor<Object, Produces> {
             this.currentClass.annotate(Factory.class);
         }
         CdiUtil.visitBeanDefinition(context, element);
+        if (CdiUtil.hasDependentScope(element, context)) {
+            element.annotate(Nullable.class);
+        }
         element.annotate(Bean.class);
     }
 

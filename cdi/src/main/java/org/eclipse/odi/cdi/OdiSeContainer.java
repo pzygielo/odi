@@ -15,8 +15,6 @@
  */
 package org.eclipse.odi.cdi;
 
-import io.micronaut.inject.qualifiers.AnyQualifier;
-import org.eclipse.odi.cdi.annotation.DisposerMethod;
 import io.micronaut.context.ApplicationContext;
 import io.micronaut.context.ApplicationContextProvider;
 import io.micronaut.context.BeanContext;
@@ -25,23 +23,17 @@ import io.micronaut.context.Qualifier;
 import io.micronaut.context.annotation.Any;
 import io.micronaut.context.annotation.Bean;
 import io.micronaut.context.annotation.Factory;
-import io.micronaut.context.event.BeanPreDestroyEventListener;
 import io.micronaut.context.exceptions.NoSuchBeanException;
 import io.micronaut.context.exceptions.NonUniqueBeanException;
-import io.micronaut.context.processor.ExecutableMethodProcessor;
-import io.micronaut.core.annotation.AnnotationMetadata;
-import io.micronaut.core.annotation.Nullable;
 import io.micronaut.core.type.Argument;
 import io.micronaut.core.type.ArgumentCoercible;
 import io.micronaut.inject.ArgumentInjectionPoint;
 import io.micronaut.inject.BeanDefinition;
-import io.micronaut.inject.ExecutableMethod;
 import io.micronaut.inject.InjectionPoint;
 import io.micronaut.inject.qualifiers.Qualifiers;
 import jakarta.enterprise.context.spi.Context;
 import jakarta.enterprise.inject.AmbiguousResolutionException;
 import jakarta.enterprise.inject.Default;
-import jakarta.enterprise.inject.Disposes;
 import jakarta.enterprise.inject.ResolutionException;
 import jakarta.enterprise.inject.UnsatisfiedResolutionException;
 import jakarta.enterprise.inject.build.compatible.spi.Parameters;
@@ -50,34 +42,27 @@ import jakarta.enterprise.inject.spi.BeanContainer;
 import jakarta.enterprise.inject.spi.BeanManager;
 import jakarta.enterprise.inject.spi.CDI;
 import jakarta.enterprise.util.TypeLiteral;
-import jakarta.inject.Singleton;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.lang.annotation.Annotation;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 @SuppressWarnings("CdiManagedBeanInconsistencyInspection")
 @Factory
 final class OdiSeContainer extends CDI<Object>
-        implements SeContainer, OdiInstance<Object>, ApplicationContextProvider, ExecutableMethodProcessor<DisposerMethod> {
-    static final Map<ApplicationContext, OdiSeContainer> RUNNING_CONTAINERS = Collections.synchronizedMap(new LinkedHashMap<>(5));
-    private static final Logger LOG = LoggerFactory.getLogger(OdiSeContainer.class);
+        implements SeContainer, OdiInstance<Object>, ApplicationContextProvider {
+    private static final Map<ApplicationContext, OdiSeContainer> RUNNING_CONTAINERS = new LinkedHashMap<>(5);
+    private static final ReentrantReadWriteLock RUNNING_CONTAINERS_LOCK = new ReentrantReadWriteLock();
     private final ApplicationContext applicationContext;
     private final OdiBeanContainerImpl beanContainer;
-    private final Map<DisposerKey, DisposerDef> disposerMethods = new HashMap<>(20);
-    private final Map<DisposerKey, DisposerDef> anyDisposerMethods = new HashMap<>(20);
 
     protected OdiSeContainer(ApplicationContext context) {
         this.applicationContext = context;
         this.beanContainer = new OdiBeanContainerImpl(this, context.getBean(OdiAnnotations.class), context);
-        RUNNING_CONTAINERS.put(context, this);
+        register(context, this);
     }
 
     @Override
@@ -85,7 +70,48 @@ final class OdiSeContainer extends CDI<Object>
         try {
             applicationContext.close();
         } finally {
-            RUNNING_CONTAINERS.remove(applicationContext);
+            unregister(applicationContext);
+        }
+    }
+
+    static CDI<Object> currentContainer() {
+        RUNNING_CONTAINERS_LOCK.writeLock().lock();
+        try {
+            OdiSeContainer latestRunningContainer = null;
+            Iterator<Map.Entry<ApplicationContext, OdiSeContainer>> iterator = RUNNING_CONTAINERS.entrySet().iterator();
+            while (iterator.hasNext()) {
+                Map.Entry<ApplicationContext, OdiSeContainer> entry = iterator.next();
+                OdiSeContainer container = entry.getValue();
+                if (entry.getKey().isRunning() && container.isRunning()) {
+                    latestRunningContainer = container;
+                } else {
+                    iterator.remove();
+                }
+            }
+            if (latestRunningContainer != null) {
+                return latestRunningContainer;
+            }
+        } finally {
+            RUNNING_CONTAINERS_LOCK.writeLock().unlock();
+        }
+        throw new IllegalStateException("No running SeContainer present");
+    }
+
+    private static void register(ApplicationContext context, OdiSeContainer container) {
+        RUNNING_CONTAINERS_LOCK.writeLock().lock();
+        try {
+            RUNNING_CONTAINERS.put(context, container);
+        } finally {
+            RUNNING_CONTAINERS_LOCK.writeLock().unlock();
+        }
+    }
+
+    private static void unregister(ApplicationContext context) {
+        RUNNING_CONTAINERS_LOCK.writeLock().lock();
+        try {
+            RUNNING_CONTAINERS.remove(context);
+        } finally {
+            RUNNING_CONTAINERS_LOCK.writeLock().unlock();
         }
     }
 
@@ -156,7 +182,7 @@ final class OdiSeContainer extends CDI<Object>
 
     @Override
     public void destroy(Object instance) {
-        throw new UnsupportedOperationException();
+        applicationContext.destroyBean(instance);
     }
 
     @Override
@@ -265,102 +291,4 @@ final class OdiSeContainer extends CDI<Object>
         throw new UnsatisfiedResolutionException("Cannot resolve bean for injection point: " + injectionPoint);
     }
 
-    @Override
-    public void process(BeanDefinition<?> beanDefinition, ExecutableMethod<?, ?> method) {
-        final Argument<?>[] arguments = method.getArguments();
-        for (Argument<?> argument : arguments) {
-            if (argument.getAnnotationMetadata().isAnnotationPresent(Disposes.class)) {
-                //noinspection unchecked
-                Qualifier<Object> qualifier = Qualifiers.forArgument(argument);
-                if (qualifier == null) {
-                    qualifier = Qualifiers.byAnnotation(AnnotationMetadata.EMPTY_METADATA, Default.class);
-                }
-                if (qualifier.contains(AnyQualifier.INSTANCE)) {
-                    anyDisposerMethods.put(new DisposerKey(argument, null), new DisposerDef(beanDefinition, method));
-                } else {
-                    disposerMethods.put(new DisposerKey(argument, qualifier), new DisposerDef(beanDefinition, method));
-                }
-                break;
-            }
-        }
-    }
-
-    /**
-     * Handler for running disposer methods.
-     *
-     * @return The BeanPreDestroyEventListener that runs disposer methods
-     */
-    @Singleton
-    @Any
-    protected BeanPreDestroyEventListener<Object> onDestroy() {
-        return event -> {
-            final Object bean = event.getBean();
-            final BeanDefinition<?> beanDefinition = event.getBeanDefinition();
-            try {
-                Argument<?> type = beanDefinition.asArgument();
-                DisposerDef<Object> disposerDef = disposerMethods.get(new DisposerKey(type, beanDefinition.getDeclaredQualifier()));
-                if (disposerDef == null) {
-                    disposerDef = anyDisposerMethods.get(new DisposerKey(type, null));
-                }
-                if (disposerDef != null) {
-                    Optional<Class<?>> producedDeclaringType = beanDefinition.getDeclaringType();
-                    Optional<Class<?>> disposeDeclaringType = disposerDef.definition.getDeclaringType();
-                    if (disposeDeclaringType.isPresent() && producedDeclaringType.isPresent() && !producedDeclaringType.get().equals(disposeDeclaringType.get())) {
-                        return bean;
-                    }
-                    beanContainer.fulfillAndExecuteMethod(disposerDef.definition, disposerDef.executableMethod, argument -> {
-                        if (argument.getAnnotationMetadata().hasAnnotation(Disposes.class)) {
-                            return bean;
-                        }
-                        return null;
-                    });
-                }
-            } catch (Throwable e) {
-                if (LOG.isErrorEnabled()) {
-                    LOG.error("Error invoking Disposer method for bean [" + beanDefinition.getBeanType() + "]: " + e.getMessage(),
-                            e);
-                }
-            }
-            return bean;
-        };
-    }
-
-    static final class DisposerKey {
-        private final Argument<?> argument;
-        private final Qualifier<?> qualifier;
-        private final int typeHashCode;
-
-        DisposerKey(Argument<?> argument, @Nullable Qualifier<?> qualifier) {
-            this.argument = argument;
-            this.qualifier = qualifier;
-            this.typeHashCode = argument.typeHashCode();
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) {
-                return true;
-            }
-            if (o == null || getClass() != o.getClass()) {
-                return false;
-            }
-            DisposerKey that = (DisposerKey) o;
-            return argument.equalsType(that.argument) && Objects.equals(qualifier, that.qualifier);
-        }
-
-        @Override
-        public int hashCode() {
-            return typeHashCode;
-        }
-    }
-
-    static final class DisposerDef<B> {
-        private final BeanDefinition<B> definition;
-        private final ExecutableMethod<B, Object> executableMethod;
-
-        DisposerDef(BeanDefinition<B> definition, ExecutableMethod<B, Object> executableMethod) {
-            this.definition = definition;
-            this.executableMethod = executableMethod;
-        }
-    }
 }

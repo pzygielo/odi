@@ -53,6 +53,9 @@ public final class OdiCreationalContext<T> implements CreationalContext<T> {
             } else if (createdBean != null) {
                 createdBean.close();
                 this.createdBean = null;
+            } else if (instance != null) {
+                beanContext.destroyBean(instance);
+                instance = null;
             }
         } else {
             contextual.destroy(instance, this);

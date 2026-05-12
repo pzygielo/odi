@@ -10,17 +10,16 @@ repositories {
     maven { url "https://repository.jboss.org/nexus/content/repositories/releases/" }
 }
 
-micronautBuild {
-    sourceCompatibility = '11'
-    targetCompatibility = '11'
+dependencies {
+    testRuntimeOnly "org.junit.platform:junit-platform-launcher:1.12.2"
 }
 
 group "org.eclipse.odi"
 version projectVersion
 
 java {
-    targetCompatibility = JavaVersion.VERSION_11
-    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_25
+    sourceCompatibility = JavaVersion.VERSION_25
 }
 
 tasks.withType(JavaCompile) {
@@ -41,6 +40,7 @@ tasks.withType(JavaCompile).configureEach {
 }
 
 tasks.withType(Test).configureEach {
+    useJUnitPlatform()
     jvmArgs '-Xmx2048m'
     systemProperty "micronaut.cloud.platform", "OTHER"
     if (JavaVersion.current() == JavaVersion.VERSION_15) {

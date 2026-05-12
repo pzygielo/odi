@@ -42,6 +42,11 @@ public class ObservesMethodVisitor extends ParameterAnnotationInjectableMethodVi
     }
 
     @Override
+    protected boolean supportsInheritedMethods() {
+        return true;
+    }
+
+    @Override
     public void handleMatch(MethodElement methodElement, ParameterElement parameterElement, VisitorContext context) {
         if (!AnnotationUtil.hasBeanDefiningAnnotation(currentClass)) {
             currentClass.annotate(ApplicationScoped.class);
@@ -49,6 +54,7 @@ public class ObservesMethodVisitor extends ParameterAnnotationInjectableMethodVi
         methodElement.annotate(AnnotationUtil.ANN_OBSERVES_METHOD, annotationValueBuilder -> {
             AnnotationValue<Observes> observesAnnotation = parameterElement.getAnnotation(Observes.class);
             annotationValueBuilder.member("eventArgumentIndex", Arrays.asList(methodElement.getParameters()).indexOf(parameterElement));
+            annotationValueBuilder.member("staticMethod", methodElement.isStatic());
             observesAnnotation.enumValue("notifyObserver", Reception.class).ifPresent(reception -> {
                 if (reception == Reception.IF_EXISTS && currentClass.hasStereotype(Dependent.class)) {
                     context.fail("@Dependent beans cannot have Reception.IF_EXISTS event observer.", methodElement);

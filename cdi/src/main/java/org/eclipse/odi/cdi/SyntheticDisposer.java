@@ -17,6 +17,7 @@ package org.eclipse.odi.cdi;
 
 import java.util.Collection;
 
+import io.micronaut.context.BeanProvider;
 import io.micronaut.context.Qualifier;
 import io.micronaut.context.event.BeanPreDestroyEvent;
 import io.micronaut.context.event.BeanPreDestroyEventListener;
@@ -31,9 +32,9 @@ import jakarta.inject.Singleton;
 @SuppressWarnings("CdiManagedBeanInconsistencyInspection")
 @Singleton
 final class SyntheticDisposer implements BeanPreDestroyEventListener<Object> {
-    private final OdiBeanContainer beanContainer;
+    private final BeanProvider<OdiBeanContainer> beanContainer;
 
-    SyntheticDisposer(OdiBeanContainer beanContainer) {
+    SyntheticDisposer(BeanProvider<OdiBeanContainer> beanContainer) {
         this.beanContainer = beanContainer;
     }
 
@@ -55,7 +56,7 @@ final class SyntheticDisposer implements BeanPreDestroyEventListener<Object> {
                     BeanDefinition<SyntheticBeanDisposer<Object>> definition = (BeanDefinition<SyntheticBeanDisposer<Object>>) o;
 
                     definition.findMethod("dispose", bean.getClass(), Instance.class, Parameters.class)
-                            .ifPresent(disposalMethod -> beanContainer.fulfillAndExecuteMethod(
+                            .ifPresent(disposalMethod -> beanContainer.get().fulfillAndExecuteMethod(
                                     definition,
                                     disposalMethod,
                                     argument1 -> {

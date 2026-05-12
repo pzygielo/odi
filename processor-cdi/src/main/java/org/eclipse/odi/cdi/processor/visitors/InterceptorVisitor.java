@@ -17,6 +17,7 @@ package org.eclipse.odi.cdi.processor.visitors;
 
 import io.micronaut.aop.InterceptorBean;
 import io.micronaut.context.annotation.Executable;
+import io.micronaut.context.annotation.Prototype;
 import io.micronaut.core.annotation.AnnotationUtil;
 import io.micronaut.core.annotation.AnnotationValue;
 import io.micronaut.core.annotation.Indexed;
@@ -29,8 +30,6 @@ import io.micronaut.inject.visitor.TypeElementVisitor;
 import io.micronaut.inject.visitor.VisitorContext;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
-import jakarta.enterprise.context.Dependent;
-import jakarta.inject.Singleton;
 import jakarta.interceptor.AroundConstruct;
 import jakarta.interceptor.AroundInvoke;
 import jakarta.interceptor.Interceptor;
@@ -82,6 +81,11 @@ public class InterceptorVisitor implements TypeElementVisitor<Interceptor, Objec
                                                     VisitorContext context,
                                                     ClassElement interceptorBean,
                                                     boolean isSelfInterceptor) {
+        InterceptorBindingVisitor.addNestedInterceptorBindings(
+                interceptorBean,
+                interceptorBean.getAnnotationMetadata(),
+                context
+        );
         Set<String> interceptorBindings =
                 new HashSet<>(interceptorBean.getAnnotationNamesByStereotype(AnnotationUtil.ANN_INTERCEPTOR_BINDINGS));
         if (!isSelfInterceptor) {
@@ -90,10 +94,6 @@ public class InterceptorVisitor implements TypeElementVisitor<Interceptor, Objec
             interceptorBean.removeStereotype(AnnotationUtil.ANN_INTERCEPTOR_BINDINGS);
             interceptorBean.removeAnnotation(AnnotationUtil.ANN_INTERCEPTOR_BINDINGS);
         }
-        // Investigate why `.hasAnnotation(Scope.class)` doesn't work
-        if (!originatingElement.hasAnnotation(Dependent.class)) {
-            interceptorBean.annotate(Singleton.class);
-        }
         final ClassElement interceptorElement = context.getClassElement(INTERCEPTOR_ADAPTER).orElse(null);
         if (interceptorElement != null) {
 
@@ -101,6 +101,7 @@ public class InterceptorVisitor implements TypeElementVisitor<Interceptor, Objec
                     .addAssociatedBean(interceptorElement)
                     .typeArguments(interceptorBean)
                     .withParameters(parameters -> parameters[0].typeArguments(interceptorBean))
+                    .annotate(Prototype.class)
                     .annotate(InterceptorBean.class)
                     .annotate(Indexed.class, builder -> builder.value(io.micronaut.aop.Interceptor.class));
             for (String interceptorBinding : interceptorBindings) {

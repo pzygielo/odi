@@ -41,10 +41,18 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.annotation.Annotation;
+import java.lang.reflect.GenericArrayType;
+import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.lang.reflect.TypeVariable;
+import java.lang.reflect.WildcardType;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -67,6 +75,7 @@ final class OdiEvent<T> implements Event<T>, OdiEventMetadata {
     private final OdiBeanContainer beanContainer;
     private final AnnotationMetadata annotationMetadata;
     private final Argument<T> eventType;
+    private final Type selectedEventType;
     @Nullable
     private final Qualifier<T> qualifier;
     @Nullable
@@ -84,6 +93,7 @@ final class OdiEvent<T> implements Event<T>, OdiEventMetadata {
     OdiEvent(OdiBeanContainer beanContainer,
              AnnotationMetadata annotationMetadata,
              Argument<T> eventType,
+             Type selectedEventType,
              @Nullable Qualifier<T> qualifier,
              @Nullable InjectionPoint<?> injectionPoint,
              OdiObserverMethodRegistry observerMethodRegistry,
@@ -91,6 +101,7 @@ final class OdiEvent<T> implements Event<T>, OdiEventMetadata {
         this.beanContainer = beanContainer;
         this.annotationMetadata = annotationMetadata;
         this.eventType = eventType;
+        this.selectedEventType = selectedEventType;
         this.qualifier = qualifier;
         this.injectionPoint = injectionPoint;
         this.observerMethodsSyncSupplier = SupplierUtil.memoizedNonEmpty(() ->
@@ -107,7 +118,7 @@ final class OdiEvent<T> implements Event<T>, OdiEventMetadata {
             if (EVENT_LOGGER.isDebugEnabled()) {
                 EVENT_LOGGER.debug("Firing event: {}", event);
             }
-            notifyObserverMethods(event, observerMethodsSyncSupplier.get());
+            notifyObserverMethods(event, findObserverMethods(event, false));
         }
     }
 
@@ -133,10 +144,14 @@ final class OdiEvent<T> implements Event<T>, OdiEventMetadata {
     @Override
     public <U extends T> Event<U> select(TypeLiteral<U> subtype, Annotation... qualifiers) {
         Argument<U> argument = (Argument<U>) Argument.of(subtype.getType());
-        return select(argument, qualifiers);
+        return select(argument, subtype.getType(), qualifiers);
     }
 
     private <U extends T> OdiEvent<U> select(Argument<U> argument, Annotation[] annotations) {
+        return select(argument, argument.asType(), annotations);
+    }
+
+    private <U extends T> OdiEvent<U> select(Argument<U> argument, Type selectedEventType, Annotation[] annotations) {
         AnnotationMetadata annotationMetadata = this.annotationMetadata;
         Qualifier<U> qualifier = (Qualifier<U>) this.qualifier;
         if (annotations != null && annotations.length > 0) {
@@ -155,6 +170,7 @@ final class OdiEvent<T> implements Event<T>, OdiEventMetadata {
                 beanContainer,
                 annotationMetadata,
                 argument,
+                selectedEventType,
                 qualifier,
                 injectionPoint,
                 observerMethodRegistry,
@@ -164,7 +180,86 @@ final class OdiEvent<T> implements Event<T>, OdiEventMetadata {
 
     private <U extends T> CompletableFuture<U> fireAsync(U event, Executor executor) {
         Objects.requireNonNull(event, "Event cannot be null");
-        return notifyObserverMethodsAsync(event, observerMethodsAsyncSupplier.get(), executor);
+        return notifyObserverMethodsAsync(event, findObserverMethods(event, true), executor);
+    }
+
+    private Collection<ObserverMethod<T>> findObserverMethods(@NonNull Object event, boolean async) {
+        validateNoTypeVariables(selectedEventType);
+        Set<ObserverMethod<T>> methods = new LinkedHashSet<>();
+        for (Argument<?> argument : resolveEventArguments(event)) {
+            Collection<ObserverMethod<T>> observerMethods = (Collection) observerMethodRegistry.findListOfObserverMethods((Argument) argument, (Qualifier) qualifier);
+            for (ObserverMethod<T> observerMethod : observerMethods) {
+                if (observerMethod.isAsync() == async) {
+                    methods.add(observerMethod);
+                }
+            }
+        }
+        List<ObserverMethod<T>> sortedMethods = new ArrayList<>(methods);
+        sortedMethods.sort(Comparator.comparing(ObserverMethod::getPriority));
+        return sortedMethods;
+    }
+
+    private Collection<Argument<?>> resolveEventArguments(@NonNull Object event) {
+        LinkedHashSet<Argument<?>> arguments = new LinkedHashSet<>();
+        Argument<?> runtimeArgument = resolveRuntimeArgument(event);
+        arguments.add(runtimeArgument);
+        arguments.add(eventType);
+        return arguments;
+    }
+
+    private Argument<?> resolveRuntimeArgument(@NonNull Object event) {
+        Class<?> runtimeType = event.getClass();
+        if (runtimeType == eventType.getType()) {
+            return eventType;
+        }
+        TypeVariable<? extends Class<?>>[] runtimeTypeParameters = runtimeType.getTypeParameters();
+        if (runtimeTypeParameters.length == 0) {
+            return Argument.of(runtimeType);
+        }
+        Argument<?>[] selectedTypeParameters = eventType.getTypeParameters();
+        if (runtimeTypeParameters.length != selectedTypeParameters.length) {
+            if (selectedTypeParameters.length == 0) {
+                return Argument.of(runtimeType);
+            }
+            throw new IllegalArgumentException("Type variable in event type");
+        }
+        return Argument.of(runtimeType, selectedTypeParameters);
+    }
+
+    private static void validateNoTypeVariables(Type type) {
+        if (containsTypeVariable(type)) {
+            throw new IllegalArgumentException("Type variable in event type");
+        }
+    }
+
+    private static boolean containsTypeVariable(Type type) {
+        if (type instanceof TypeVariable<?>) {
+            return true;
+        }
+        if (type instanceof ParameterizedType) {
+            for (Type argument : ((ParameterizedType) type).getActualTypeArguments()) {
+                if (containsTypeVariable(argument)) {
+                    return true;
+                }
+            }
+        }
+        if (type instanceof GenericArrayType) {
+            return containsTypeVariable(((GenericArrayType) type).getGenericComponentType());
+        }
+        if (type instanceof WildcardType) {
+            WildcardType wildcard = (WildcardType) type;
+            for (Type bound : wildcard.getUpperBounds()) {
+                if (containsTypeVariable(bound)) {
+                    return true;
+                }
+            }
+            for (Type bound : wildcard.getLowerBounds()) {
+                if (containsTypeVariable(bound)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private void notifyObserverMethods(@NonNull T event, Collection<ObserverMethod<T>> observerMethods) {

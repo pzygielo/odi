@@ -28,6 +28,7 @@ import jakarta.enterprise.inject.spi.ObserverMethod;
 import jakarta.inject.Singleton;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
@@ -93,7 +94,7 @@ public final class OdiObserverMethodRegistry {
 
     private <T> void collectMethods(Argument<T> argument, Qualifier<T> qualifier, Collection<ObserverMethod<?>> method) {
         for (OdiObserverMethod<?> observer : observerMethods) {
-            if (!observer.getObservedArgument().isAssignableFrom(argument)) {
+            if (!matchesObservedType(observer.getObservedArgument(), argument)) {
                 continue;
             }
             Qualifier observedQualifier = observer.getObservedQualifier();
@@ -112,5 +113,19 @@ public final class OdiObserverMethodRegistry {
             }
             method.add(observer);
         }
+    }
+
+    private boolean matchesObservedType(Argument<?> observedArgument, Argument<?> eventArgument) {
+        if (observedArgument.isAssignableFrom(eventArgument)) {
+            return true;
+        }
+        if (!observedArgument.getType().equals(eventArgument.getType())) {
+            return false;
+        }
+        Argument<?>[] observedTypeParameters = observedArgument.getTypeParameters();
+        Argument<?>[] eventTypeParameters = eventArgument.getTypeParameters();
+        return observedTypeParameters.length == 0
+                || eventTypeParameters.length == 0
+                || Arrays.equals(observedTypeParameters, eventTypeParameters);
     }
 }

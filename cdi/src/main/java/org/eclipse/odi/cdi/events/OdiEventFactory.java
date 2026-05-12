@@ -36,6 +36,7 @@ import jakarta.enterprise.event.NotificationOptions;
 import jakarta.enterprise.util.TypeLiteral;
 
 import java.lang.annotation.Annotation;
+import java.lang.reflect.Type;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ForkJoinPool;
@@ -92,7 +93,7 @@ final class OdiEventFactory {
                     argumentInjectionPoint
             );
         }
-        return getTypedEvent(annotationMetadata, eventType, eventQualifier, argumentInjectionPoint);
+        return getTypedEvent(annotationMetadata, eventType, eventType.asType(), eventQualifier, argumentInjectionPoint);
     }
 
     private Event<Object> createObjectEvent(
@@ -106,6 +107,7 @@ final class OdiEventFactory {
                 getTypedEvent(
                         annotationMetadata,
                         Argument.of(event.getClass()),
+                        event.getClass(),
                         qualifier,
                         injectionPoint)
                 .fire(event);
@@ -117,6 +119,7 @@ final class OdiEventFactory {
                 return getTypedEvent(
                         annotationMetadata,
                         Argument.of(event.getClass()),
+                        event.getClass(),
                         qualifier,
                         injectionPoint)
                 .fireAsync(event);
@@ -128,6 +131,7 @@ final class OdiEventFactory {
                 return getTypedEvent(
                         annotationMetadata,
                         Argument.of(event.getClass()),
+                        event.getClass(),
                         qualifier,
                         injectionPoint)
                 .fireAsync(event, options);
@@ -150,6 +154,7 @@ final class OdiEventFactory {
             public <U> Event<U> select(TypeLiteral<U> subtype, Annotation... qualifiers) {
                 return (Event<U>) getTypedEvent(
                         Argument.of(subtype.getType()),
+                        subtype.getType(),
                         qualifiers,
                         injectionPoint
                 );
@@ -160,12 +165,14 @@ final class OdiEventFactory {
     private <K> Event<K> getTypedEvent(
             AnnotationMetadata annotationMetadata,
             Argument<K> eventType,
+            Type selectedEventType,
             Qualifier<K> eventQualifier,
             InjectionPoint<?> injectionPoint) {
         return new OdiEvent<>(
                 beanContainer,
                 annotationMetadata,
                 eventType,
+                selectedEventType,
                 eventQualifier,
                 injectionPoint,
                 observerMethodRegistry,
@@ -174,12 +181,17 @@ final class OdiEventFactory {
     }
 
     private <K> Event<K> getTypedEvent(Argument<K> eventType, Annotation[] qualifiers, InjectionPoint<?> injectionPoint) {
+        return getTypedEvent(eventType, eventType.asType(), qualifiers, injectionPoint);
+    }
+
+    private <K> Event<K> getTypedEvent(Argument<K> eventType, Type selectedEventType, Annotation[] qualifiers, InjectionPoint<?> injectionPoint) {
         AnnotationMetadata annotationMetadata = AnnotationUtils.annotationMetadataFromQualifierAnnotations(qualifiers);
         Qualifier<K> qualifier = AnnotationUtils.qualifierFromQualifierAnnotations(annotationMetadata, qualifiers);
         return new OdiEvent<>(
                 beanContainer,
                 annotationMetadata,
                 eventType,
+                selectedEventType,
                 qualifier,
                 injectionPoint,
                 observerMethodRegistry,

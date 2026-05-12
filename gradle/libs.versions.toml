@@ -1,11 +1,11 @@
 [versions]
-micronaut = "3.7.1"
+micronaut = "5.0.0-SNAPSHOT"
 micronaut-docs = "2.0.0"
 
-groovy = "3.0.11"
+groovy = "5.0.4"
 
-cdi-tck = "4.0.7"
-cdi-api = "4.0.1"
+cdi = "4.1.0"
+javax-annotation = "1.3.2"
 
 # Testing
 
@@ -13,15 +13,17 @@ helidon = "2.3.2"
 smallrye-fault-tolerance = "5.1.0"
 microprofile-config = "2.0"
 cdi-api2 = "2.0.SP1"
-jupiter = "5.9.0"
+jupiter = "5.12.2"
 
 [libraries]
 
-cdi-api = { module = 'jakarta.enterprise:jakarta.enterprise.cdi-api', version.ref = "cdi-api" }
+cdi-api = { module = 'jakarta.enterprise:jakarta.enterprise.cdi-api', version.ref = "cdi" }
+cdi-lang-model = { module = 'jakarta.enterprise:jakarta.enterprise.lang-model', version.ref = "cdi" }
+javax-annotation-api = { module = "javax.annotation:javax.annotation-api", version.ref = "javax-annotation" }
 
-cdi-tck-api = { module = 'jakarta.enterprise:cdi-tck-api', version.ref = "cdi-tck" }
-cdi-tck-impl = { module = 'jakarta.enterprise:cdi-tck-core-impl', version.ref = "cdi-tck" }
-cdi-tck-lang-model = { module = 'jakarta.enterprise:cdi-tck-lang-model', version.ref = "cdi-tck" }
+cdi-tck-api = { module = 'jakarta.enterprise:cdi-tck-api', version.ref = "cdi" }
+cdi-tck-impl = { module = 'jakarta.enterprise:cdi-tck-core-impl', version.ref = "cdi" }
+cdi-tck-lang-model = { module = 'jakarta.enterprise:cdi-tck-lang-model', version.ref = "cdi" }
 
 # Testing
 

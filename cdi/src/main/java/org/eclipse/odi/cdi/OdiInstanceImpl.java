@@ -30,9 +30,12 @@ import jakarta.enterprise.inject.Instance;
 import jakarta.enterprise.inject.UnsatisfiedResolutionException;
 import jakarta.enterprise.inject.spi.Bean;
 import jakarta.enterprise.inject.spi.InjectionPoint;
+import jakarta.enterprise.inject.spi.Prioritized;
 import jakarta.enterprise.util.TypeLiteral;
 
 import java.lang.annotation.Annotation;
+import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -52,7 +55,7 @@ final class OdiInstanceImpl<T> implements OdiInstance<T> {
     @Nullable
     private OdiBean<T> bean;
 
-    private final Map<T, CreationalContext<T>> created = new HashMap<>();
+    private final Map<Object, CreationalContext<?>> created;
 
     OdiInstanceImpl(OdiBeanContainer beanContainer,
                     @Nullable
@@ -60,11 +63,22 @@ final class OdiInstanceImpl<T> implements OdiInstance<T> {
                     Argument<T> beanType,
                     @Nullable InjectionPoint injectionPoint,
                     @Nullable Qualifier<T> qualifier) {
+        this(beanContainer, context, beanType, injectionPoint, qualifier, new HashMap<>());
+    }
+
+    private OdiInstanceImpl(OdiBeanContainer beanContainer,
+                            @Nullable
+                            Context context,
+                            Argument<T> beanType,
+                            @Nullable InjectionPoint injectionPoint,
+                            @Nullable Qualifier<T> qualifier,
+                            Map<Object, CreationalContext<?>> created) {
         this.beanContainer = beanContainer;
         this.context = context == null ? NoOpDependentContext.INSTANCE : context;
         this.beanType = beanType;
         this.qualifier = qualifier;
         this.injectionPoint = injectionPoint;
+        this.created = created;
     }
 
     OdiInstanceImpl(OdiBeanContainer beanContainer,
@@ -87,7 +101,8 @@ final class OdiInstanceImpl<T> implements OdiInstance<T> {
                     context,
                     argument,
                     null,
-                    withQualifier(qualifier)
+                    withQualifier(qualifier),
+                    created
             );
         }
     }
@@ -99,7 +114,8 @@ final class OdiInstanceImpl<T> implements OdiInstance<T> {
                 context,
                 beanType,
                 null,
-                withAnnotations(qualifiers)
+                withAnnotations(qualifiers),
+                created
         );
     }
 
@@ -140,7 +156,7 @@ final class OdiInstanceImpl<T> implements OdiInstance<T> {
 
     @Override
     public void destroy(T instance) {
-        CreationalContext<T> creationalContext = created.get(instance);
+        CreationalContext<?> creationalContext = created.remove(instance);
         if (creationalContext != null) {
             creationalContext.release();
         } else {
@@ -211,9 +227,34 @@ final class OdiInstanceImpl<T> implements OdiInstance<T> {
 
     @Override
     public List<Handle<T>> handles() {
-        return beanContainer.getBeans(beanType, qualifier).stream()
+        return resolveInstanceBeans(beanContainer.getBeans(beanType, qualifier)).stream()
                 .map(this::toHandle)
                 .collect(Collectors.toList());
+    }
+
+    private List<OdiBean<T>> resolveInstanceBeans(Collection<OdiBean<T>> beans) {
+        List<OdiBean<T>> prioritizedAlternatives = beans.stream()
+                .filter(Bean::isAlternative)
+                .filter(bean -> getPriority(bean) > 0)
+                .collect(Collectors.toList());
+        if (prioritizedAlternatives.isEmpty()) {
+            return beans.stream().collect(Collectors.toList());
+        }
+        int highestPriority = prioritizedAlternatives.stream()
+                .mapToInt(this::getPriority)
+                .max()
+                .orElse(0);
+        return prioritizedAlternatives.stream()
+                .filter(bean -> getPriority(bean) == highestPriority)
+                .sorted(Comparator.comparing(bean -> bean.getBeanClass().getName()))
+                .collect(Collectors.toList());
+    }
+
+    private int getPriority(Bean<?> bean) {
+        if (bean instanceof Prioritized) {
+            return ((Prioritized) bean).getPriority();
+        }
+        return 0;
     }
 
     @Override

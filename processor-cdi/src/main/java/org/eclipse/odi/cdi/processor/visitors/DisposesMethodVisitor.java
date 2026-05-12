@@ -19,6 +19,7 @@ import io.micronaut.inject.ast.ClassElement;
 import io.micronaut.inject.ast.ElementQuery;
 import io.micronaut.inject.ast.MethodElement;
 import io.micronaut.inject.ast.ParameterElement;
+import io.micronaut.context.annotation.Executable;
 import io.micronaut.inject.visitor.TypeElementVisitor;
 import io.micronaut.inject.visitor.VisitorContext;
 import jakarta.enterprise.inject.Disposes;
@@ -57,7 +58,10 @@ public class DisposesMethodVisitor extends ParameterAnnotationInjectableMethodVi
         }
 
         this.disposerMethods.add(methodElement);
-        methodElement.annotate(AnnotationUtil.ANN_DISPOSER_METHOD);
+        methodElement.annotate(AnnotationUtil.ANN_DISPOSER_METHOD, builder -> builder.member("staticMethod", methodElement.isStatic()));
+        if (methodElement.isStatic()) {
+            methodElement.annotate(Executable.class, builder -> builder.member("processOnStartup", true));
+        }
     }
 
     private boolean validateMatchingProduces(MethodElement element, VisitorContext context, ClassElement disposedType) {

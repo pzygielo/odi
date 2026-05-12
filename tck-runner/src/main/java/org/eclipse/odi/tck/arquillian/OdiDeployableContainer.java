@@ -50,6 +50,7 @@ public class OdiDeployableContainer implements DeployableContainer<OdiContainerC
     static ClassLoader old;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(OdiDeployableContainer.class);
+    private static final String DEPLOYMENT_EXCEPTION_MARKER = "[ODI_DEPLOYMENT_EXCEPTION] ";
 
     @Inject
     @DeploymentScoped
@@ -121,11 +122,16 @@ public class OdiDeployableContainer implements DeployableContainer<OdiContainerC
             // maybe there's a better way? Quarkus makes the test class a bean and then looks it up from CDI
             OdiInjectionEnricher.enrich(testInstance, applicationContext);
         } catch (ArchiveCompilationException e) {
+            if (e.getMessage().contains(DEPLOYMENT_EXCEPTION_MARKER)) {
+                throw new jakarta.enterprise.inject.spi.DeploymentException(
+                        e.getMessage().replace(DEPLOYMENT_EXCEPTION_MARKER, "")
+                );
+            }
             throw new jakarta.enterprise.inject.spi.DefinitionException(e.getMessage());
         } catch (ArchiveCompilerException e) {
             throw new RuntimeException("Compiler failed with: " + e.getMessage(), e);
         } catch (Throwable e) {
-            throw new jakarta.enterprise.inject.spi.DeploymentException(e.getMessage());
+            throw new jakarta.enterprise.inject.spi.DeploymentException(e.getMessage(), e);
         } finally {
             Thread.currentThread().setContextClassLoader(old);
         }

@@ -58,9 +58,9 @@ public class OdiInjectPointFactory {
     }
 
     public static <T> InjectionPoint<T> provideInjectionPoint(BeanResolutionContext resolutionContext) {
-        ArrayList<BeanResolutionContext.Segment<?>> paths = new ArrayList<>(resolutionContext.getPath());
+        ArrayList<BeanResolutionContext.Segment<?, ?>> paths = new ArrayList<>(resolutionContext.getPath());
         if (!paths.isEmpty()) {
-            BeanResolutionContext.Segment<?> removed = paths.remove(0);
+            BeanResolutionContext.Segment<?, ?> removed = paths.remove(0);
             if (removed instanceof AbstractBeanResolutionContext.MethodArgumentSegment && !paths.isEmpty()) {
                 paths.remove(0);
             }
@@ -69,8 +69,8 @@ public class OdiInjectPointFactory {
             return null;
         }
         if (CollectionUtils.isNotEmpty(paths)) {
-            final Iterator<BeanResolutionContext.Segment<?>> i = paths.iterator();
-            BeanResolutionContext.Segment<?> segment = null;
+            final Iterator<BeanResolutionContext.Segment<?, ?>> i = paths.iterator();
+            BeanResolutionContext.Segment<?, ?> segment = null;
             if (i.hasNext()) {
                 segment = i.next();
                 if (segment.getDeclaringType().hasStereotype(INTRODUCTION_TYPE)) {

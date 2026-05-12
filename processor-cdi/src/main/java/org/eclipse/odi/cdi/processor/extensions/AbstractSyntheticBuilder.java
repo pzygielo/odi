@@ -32,6 +32,7 @@ import io.micronaut.inject.visitor.VisitorContext;
 import jakarta.enterprise.inject.Alternative;
 import jakarta.enterprise.inject.build.compatible.spi.AnnotationBuilder;
 import jakarta.enterprise.inject.build.compatible.spi.DeclarationConfig;
+import jakarta.enterprise.inject.build.compatible.spi.InvokerInfo;
 import jakarta.enterprise.inject.build.compatible.spi.Types;
 import jakarta.enterprise.lang.model.AnnotationInfo;
 import jakarta.enterprise.lang.model.AnnotationTarget;
@@ -191,6 +192,16 @@ abstract class AbstractSyntheticBuilder extends AnnotationTargetImpl implements 
 
     protected Object withParam(String key, Annotation[] value) {
         addAnnotation(AnnotationBuilder.of(Property.class).member("name", key).value(value).build());
+        return this;
+    }
+
+    protected Object withParam(String key, InvokerInfo value) {
+        params.put(key, value);
+        return this;
+    }
+
+    protected Object withParam(String key, InvokerInfo[] value) {
+        params.put(key, value);
         return this;
     }
 

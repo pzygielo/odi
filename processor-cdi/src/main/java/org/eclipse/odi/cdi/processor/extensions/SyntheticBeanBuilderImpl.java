@@ -19,8 +19,6 @@ import java.lang.annotation.Annotation;
 import java.lang.annotation.RetentionPolicy;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -32,6 +30,7 @@ import jakarta.enterprise.inject.Alternative;
 import jakarta.enterprise.inject.build.compatible.spi.SyntheticBeanBuilder;
 import jakarta.enterprise.inject.build.compatible.spi.SyntheticBeanCreator;
 import jakarta.enterprise.inject.build.compatible.spi.SyntheticBeanDisposer;
+import jakarta.enterprise.inject.build.compatible.spi.InvokerInfo;
 import jakarta.enterprise.inject.build.compatible.spi.Types;
 import jakarta.enterprise.lang.model.AnnotationInfo;
 import jakarta.enterprise.lang.model.declarations.ClassInfo;
@@ -44,7 +43,6 @@ final class SyntheticBeanBuilderImpl<T> extends AbstractSyntheticBuilder impleme
     private final ClassElement beanType;
     private final VisitorContext localVisitorContext;
     private final Set<ClassElement> exposedTypes = new HashSet<>();
-    private final Map<String, Object> params = new LinkedHashMap<>();
     private Class<? extends SyntheticBeanDisposer<T>> disposerClass;
     private Class<? extends SyntheticBeanCreator<T>> creatorClass;
 
@@ -70,10 +68,6 @@ final class SyntheticBeanBuilderImpl<T> extends AbstractSyntheticBuilder impleme
 
     public Class<? extends SyntheticBeanCreator<T>> getCreatorClass() {
         return creatorClass;
-    }
-
-    public Map<String, Object> getParams() {
-        return params;
     }
 
     @Override
@@ -272,6 +266,18 @@ final class SyntheticBeanBuilderImpl<T> extends AbstractSyntheticBuilder impleme
 
     @Override
     public SyntheticBeanBuilder<T> withParam(String key, Annotation[] value) {
+        super.withParam(key, value);
+        return this;
+    }
+
+    @Override
+    public SyntheticBeanBuilder<T> withParam(String key, InvokerInfo value) {
+        super.withParam(key, value);
+        return this;
+    }
+
+    @Override
+    public SyntheticBeanBuilder<T> withParam(String key, InvokerInfo[] value) {
         super.withParam(key, value);
         return this;
     }

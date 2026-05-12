@@ -19,6 +19,7 @@ import io.micronaut.context.BeanProvider;
 import io.micronaut.context.Qualifier;
 import io.micronaut.context.annotation.Any;
 import io.micronaut.core.annotation.AnnotationMetadata;
+import io.micronaut.core.annotation.AnnotationUtil;
 import io.micronaut.core.annotation.AnnotationValue;
 import io.micronaut.core.annotation.Nullable;
 import io.micronaut.inject.annotation.MutableAnnotationMetadata;
@@ -144,7 +145,7 @@ final class OdiAnnotationsImpl implements OdiAnnotations {
                     annotationMetadata.addDeclaredStereotype(
                             List.of(value.getAnnotationName()),
                             MetaAnnotationSupport.META_ANNOTATION_QUALIFIER, Collections.singletonMap(
-                                    "nonBinding", nonBinding
+                                    AnnotationUtil.NON_BINDING_ATTRIBUTE, nonBinding
                             )
                     );
                 }

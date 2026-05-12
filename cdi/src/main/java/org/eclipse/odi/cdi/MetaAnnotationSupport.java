@@ -20,16 +20,17 @@ import java.util.ArrayList;
 import java.util.List;
 
 import io.micronaut.core.annotation.AnnotationMetadata;
+import io.micronaut.core.annotation.AnnotationUtil;
 import jakarta.enterprise.context.Dependent;
 import jakarta.enterprise.context.NormalScope;
 import jakarta.enterprise.inject.Stereotype;
 import jakarta.inject.Singleton;
 
 final class MetaAnnotationSupport {
-    public static final String META_ANNOTATION_SCOPE = "javax.inject.Scope";
-    public static final String META_ANNOTATION_SINGLETON = "javax.inject.Singleton";
-    public static final String META_ANNOTATION_NAMED = "javax.inject.Named";
-    public static final String META_ANNOTATION_QUALIFIER = "javax.inject.Qualifier";
+    public static final String META_ANNOTATION_SCOPE = AnnotationUtil.SCOPE;
+    public static final String META_ANNOTATION_SINGLETON = AnnotationUtil.SINGLETON;
+    public static final String META_ANNOTATION_NAMED = AnnotationUtil.NAMED;
+    public static final String META_ANNOTATION_QUALIFIER = AnnotationUtil.QUALIFIER;
 
     private MetaAnnotationSupport() {
     }
@@ -39,13 +40,15 @@ final class MetaAnnotationSupport {
             return Dependent.class;
         }
         final List<String> stereotypes = annotationMetadata.getAnnotationNamesByStereotype(Stereotype.class);
+        final List<String> declaredAnnotations = new ArrayList<>(annotationMetadata.getDeclaredAnnotationNames());
         final List<String> scopeStereotypes = new ArrayList<>(annotationMetadata.getDeclaredAnnotationNamesByStereotype(
                 META_ANNOTATION_SCOPE));
         purgeInternalScopes(stereotypes, scopeStereotypes);
-        String n = null;
-        if (!scopeStereotypes.isEmpty()) {
-            n = scopeStereotypes.iterator().next();
-        } else {
+        String n = scopeStereotypes.stream()
+                .filter(declaredAnnotations::contains)
+                .findFirst()
+                .orElseGet(() -> scopeStereotypes.isEmpty() ? null : scopeStereotypes.iterator().next());
+        if (n == null) {
             scopeStereotypes.addAll(annotationMetadata.getAnnotationNamesByStereotype(META_ANNOTATION_SCOPE));
             purgeInternalScopes(stereotypes, scopeStereotypes);
             if (!scopeStereotypes.isEmpty()) {

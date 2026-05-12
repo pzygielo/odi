@@ -17,8 +17,8 @@ package org.eclipse.odi.tck.arquillian;
 
 import io.micronaut.annotation.processing.AggregatingTypeElementVisitorProcessor;
 import io.micronaut.annotation.processing.BeanDefinitionInjectProcessor;
-import io.micronaut.annotation.processing.PackageConfigurationInjectProcessor;
-import io.micronaut.annotation.processing.ServiceDescriptionProcessor;
+import io.micronaut.annotation.processing.MixinVisitorProcessor;
+import io.micronaut.annotation.processing.PackageElementVisitorProcessor;
 import io.micronaut.annotation.processing.TypeElementVisitorProcessor;
 import io.micronaut.core.io.IOUtils;
 import io.micronaut.core.io.service.SoftServiceLoader;
@@ -172,19 +172,19 @@ final class ArchiveCompiler {
                 ClassLoader classLoader = new DeploymentClassLoader(deploymentDir);
                 SoftServiceLoader<BuildCompatibleExtension> buildExtensionLoader =
                         SoftServiceLoader.load(BuildCompatibleExtension.class, classLoader);
+                BuildTimeExtensionRegistry.setInstance(new BuildTimeExtensionRegistry() {
+                    @Override
+                    protected SoftServiceLoader<BuildCompatibleExtension> findExtensions() {
+                        return buildExtensionLoader;
+                    }
+                });
                 try {
-                    BuildTimeExtensionRegistry.setInstance(new BuildTimeExtensionRegistry() {
-                        @Override
-                        protected SoftServiceLoader<BuildCompatibleExtension> findExtensions() {
-                            return buildExtensionLoader;
-                        }
-                    });
-                } finally {
-
                     enhancementTask.setProcessors(getAnnotationProcessors());
                     if (!Boolean.TRUE.equals(enhancementTask.call())) {
                         outputDiagnostics(diagnostics);
                     }
+                } finally {
+                    BuildTimeExtensionRegistry.setInstance(null);
                 }
             }
         }
@@ -224,11 +224,11 @@ final class ArchiveCompiler {
 
     private List<Processor> getAnnotationProcessors() {
         List<Processor> result = new ArrayList<>();
+        result.add(new MixinVisitorProcessor());
+        result.add(new PackageElementVisitorProcessor());
         result.add(new TypeElementVisitorProcessor());
         result.add(new AggregatingTypeElementVisitorProcessor());
-        result.add(new PackageConfigurationInjectProcessor());
         result.add(new BeanDefinitionInjectProcessor());
-        result.add(new ServiceDescriptionProcessor());
         return result;
     }
 

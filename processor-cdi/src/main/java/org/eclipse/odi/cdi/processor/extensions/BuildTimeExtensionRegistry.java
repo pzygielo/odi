@@ -18,6 +18,7 @@ package org.eclipse.odi.cdi.processor.extensions;
 import io.micronaut.context.LifeCycle;
 import io.micronaut.core.annotation.AnnotationUtil;
 import io.micronaut.core.annotation.AnnotationValue;
+import io.micronaut.core.annotation.AnnotationValueBuilder;
 import io.micronaut.core.annotation.Internal;
 import io.micronaut.core.annotation.NonNull;
 import io.micronaut.core.annotation.Nullable;
@@ -31,6 +32,8 @@ import io.micronaut.core.util.ArrayUtils;
 import io.micronaut.core.util.CollectionUtils;
 import io.micronaut.inject.ast.ClassElement;
 import io.micronaut.inject.ast.Element;
+import io.micronaut.inject.ast.MethodElement;
+import io.micronaut.inject.ast.ParameterElement;
 import io.micronaut.inject.ast.beans.BeanElement;
 import io.micronaut.inject.visitor.VisitorContext;
 import jakarta.annotation.Priority;
@@ -42,6 +45,7 @@ import jakarta.enterprise.inject.build.compatible.spi.Discovery;
 import jakarta.enterprise.inject.build.compatible.spi.Enhancement;
 import jakarta.enterprise.inject.build.compatible.spi.FieldConfig;
 import jakarta.enterprise.inject.build.compatible.spi.InterceptorInfo;
+import jakarta.enterprise.inject.build.compatible.spi.InvokerFactory;
 import jakarta.enterprise.inject.build.compatible.spi.Messages;
 import jakarta.enterprise.inject.build.compatible.spi.MetaAnnotations;
 import jakarta.enterprise.inject.build.compatible.spi.MethodConfig;
@@ -54,14 +58,17 @@ import jakarta.enterprise.inject.build.compatible.spi.SyntheticComponents;
 import jakarta.enterprise.inject.build.compatible.spi.SyntheticObserverBuilder;
 import jakarta.enterprise.inject.build.compatible.spi.Types;
 import jakarta.enterprise.inject.build.compatible.spi.Validation;
+import jakarta.enterprise.inject.spi.DeploymentException;
 import jakarta.enterprise.lang.model.declarations.ClassInfo;
 import jakarta.enterprise.lang.model.declarations.DeclarationInfo;
 import jakarta.enterprise.lang.model.declarations.FieldInfo;
 import jakarta.enterprise.lang.model.declarations.MethodInfo;
 import jakarta.enterprise.lang.model.types.Type;
 import jakarta.interceptor.Interceptor;
+import org.eclipse.odi.cdi.OdiExecutableInvokerInfo;
 
 import java.lang.annotation.Annotation;
+import java.lang.annotation.RetentionPolicy;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -90,7 +97,12 @@ public class BuildTimeExtensionRegistry implements LifeCycle<BuildTimeExtensionR
     private static BuildTimeExtensionRegistry instance = new BuildTimeExtensionRegistry();
     private List<BuildCompatibleExtensionEntry> buildTimeExtensions;
     private final List<String> loadErrors = new ArrayList<>();
+    private final List<BeanElement> beanElements = new ArrayList<>();
+    private final List<InvokerRegistration> invokers = new ArrayList<>();
     private DiscoveryImpl discovery;
+    private static final String DEPLOYMENT_EXCEPTION_MARKER = "[ODI_DEPLOYMENT_EXCEPTION] ";
+    private static final String DEFAULT_QUALIFIER = "jakarta.enterprise.inject.Default";
+    private static final String ANY_QUALIFIER = "jakarta.enterprise.inject.Any";
 
     /**
      * Loads the default extensions.
@@ -257,10 +269,31 @@ public class BuildTimeExtensionRegistry implements LifeCycle<BuildTimeExtensionR
         for (MetaAnnotationImpl annotation : qualifiers) {
             final String annotationName = annotation.getName();
             final String[] nonBindingMembers = annotation.getNonBindingMembers();
-            if (typeToEnhance.hasDeclaredAnnotation(annotationName) && ArrayUtils.isNotEmpty(nonBindingMembers)) {
-                typeToEnhance.annotate(AnnotationValue.builder(AnnotationUtil.QUALIFIER)
-                                               .member("nonBinding", nonBindingMembers)
-                                               .build());
+            if (typeToEnhance.hasDeclaredAnnotation(annotationName)) {
+                final AnnotationValue<Annotation> annotationValue = typeToEnhance.getAnnotation(annotationName);
+                if (annotationValue != null) {
+                    final AnnotationValueBuilder<Annotation> qualifierBuilder =
+                            AnnotationValue.builder(AnnotationUtil.QUALIFIER);
+                    if (ArrayUtils.isNotEmpty(nonBindingMembers)) {
+                        qualifierBuilder.member(AnnotationUtil.NON_BINDING_ATTRIBUTE, nonBindingMembers);
+                    }
+
+                    final List<AnnotationValue<?>> stereotypes = new ArrayList<>();
+                    if (annotationValue.getStereotypes() != null) {
+                        for (AnnotationValue<?> stereotype : annotationValue.getStereotypes()) {
+                            if (!AnnotationUtil.QUALIFIER.equals(stereotype.getAnnotationName())) {
+                                stereotypes.add(stereotype);
+                            }
+                        }
+                    }
+                    stereotypes.add(qualifierBuilder.build());
+
+                    typeToEnhance.annotate(
+                            AnnotationValue.builder(annotationValue, RetentionPolicy.RUNTIME)
+                                    .replaceStereotypes(stereotypes)
+                                    .build()
+                    );
+                }
             }
         }
     }
@@ -272,6 +305,7 @@ public class BuildTimeExtensionRegistry implements LifeCycle<BuildTimeExtensionR
      * @param visitorContext The visitor context
      */
     public void runRegistration(BeanElement beanElement, VisitorContext visitorContext) {
+        beanElements.add(beanElement);
         final Set<ClassElement> beanTypes = beanElement.getBeanTypes();
         for (BuildCompatibleExtensionEntry entry : buildTimeExtensions) {
             final BuildCompatibleExtension extension = entry.extension;
@@ -440,6 +474,8 @@ public class BuildTimeExtensionRegistry implements LifeCycle<BuildTimeExtensionR
                     parameters[i] = new TypesImpl(visitorContext);
                 } else if (Messages.class == parameterType) {
                     parameters[i] = new MessagesImpl(visitorContext);
+                } else if (InvokerFactory.class == parameterType) {
+                    parameters[i] = new InvokerFactoryImpl(this);
                 } else {
                     unsupportedParameter(
                             beanElement.getProducingElement(),
@@ -498,16 +534,92 @@ public class BuildTimeExtensionRegistry implements LifeCycle<BuildTimeExtensionR
                            VisitorContext visitorContext,
                            Throwable e,
                            String rootMessage) {
-        Throwable exception = e;
-        if (e instanceof InvocationException) {
-            exception = e.getCause();
-        }
-        if (e instanceof InvocationTargetException) {
-            exception = e.getCause();
-        }
-        visitorContext.fail(rootMessage + method.getName() + "' of extension "
+        Throwable exception = unwrapExtensionException(e);
+        String message = rootMessage + method.getName() + "' of extension "
                                     + "[" + extension.getClass()
-                .getName() + "]: " + exception.getMessage(), beanElement);
+                .getName() + "]: " + exception.getMessage();
+        if (exception instanceof DeploymentException) {
+            message = DEPLOYMENT_EXCEPTION_MARKER + message;
+        }
+        visitorContext.fail(message, beanElement);
+    }
+
+    private Throwable unwrapExtensionException(Throwable e) {
+        Throwable exception = e;
+        while ((exception instanceof InvocationException || exception instanceof InvocationTargetException)
+                && exception.getCause() != null) {
+            exception = exception.getCause();
+        }
+        return exception;
+    }
+
+    void registerInvoker(OdiExecutableInvokerInfo invokerInfo, MethodElement methodElement) {
+        invokers.add(new InvokerRegistration(invokerInfo, methodElement));
+    }
+
+    void validateInvokers(VisitorContext visitorContext) {
+        for (InvokerRegistration invoker : invokers) {
+            ParameterElement[] parameters = invoker.methodElement.getParameters();
+            for (int i = 0; i < parameters.length; i++) {
+                if (invoker.invokerInfo.isArgumentLookup(i)) {
+                    validateArgumentLookup(visitorContext, invoker.methodElement, parameters[i]);
+                }
+            }
+        }
+    }
+
+    private void validateArgumentLookup(VisitorContext visitorContext,
+                                        MethodElement methodElement,
+                                        ParameterElement parameterElement) {
+        ClassElement requiredType = parameterElement.getGenericType();
+        String requiredTypeName = requiredType.getName();
+        if (isBuiltinLookupType(requiredTypeName)) {
+            return;
+        }
+        int candidates = 0;
+        for (BeanElement beanElement : beanElements) {
+            if (matchesRequiredType(beanElement, requiredType)
+                    && matchesRequiredQualifiers(beanElement, parameterElement)) {
+                candidates++;
+            }
+        }
+        if (candidates == 0) {
+            visitorContext.fail(DEPLOYMENT_EXCEPTION_MARKER
+                    + "Unsatisfied invoker argument lookup for " + requiredTypeName, methodElement);
+        } else if (candidates > 1) {
+            visitorContext.fail(DEPLOYMENT_EXCEPTION_MARKER
+                    + "Ambiguous invoker argument lookup for " + requiredTypeName, methodElement);
+        }
+    }
+
+    private boolean isBuiltinLookupType(String typeName) {
+        return typeName.equals("jakarta.enterprise.inject.spi.BeanContainer")
+                || typeName.equals("jakarta.enterprise.inject.spi.BeanManager")
+                || typeName.equals("jakarta.enterprise.event.Event")
+                || typeName.equals("jakarta.enterprise.inject.Instance");
+    }
+
+    private boolean matchesRequiredType(BeanElement beanElement, ClassElement requiredType) {
+        String requiredTypeName = requiredType.getName();
+        return beanElement.getBeanTypes()
+                .stream()
+                .anyMatch(beanType -> beanType.getName().equals(requiredTypeName));
+    }
+
+    private boolean matchesRequiredQualifiers(BeanElement beanElement, ParameterElement parameterElement) {
+        List<String> requiredQualifiers = parameterElement.getAnnotationMetadata()
+                .getAnnotationNamesByStereotype(AnnotationUtil.QUALIFIER);
+        if (requiredQualifiers.isEmpty()) {
+            requiredQualifiers = Collections.singletonList(DEFAULT_QUALIFIER);
+        }
+        Collection<String> beanQualifiers = beanElement.getQualifiers();
+        if (requiredQualifiers.size() == 1 && requiredQualifiers.contains(ANY_QUALIFIER)) {
+            return true;
+        }
+        if (beanQualifiers.isEmpty()) {
+            return requiredQualifiers.size() == 1 && requiredQualifiers.contains(DEFAULT_QUALIFIER);
+        }
+        return beanQualifiers.containsAll(requiredQualifiers);
     }
 
     @SuppressWarnings("java:S1181")
@@ -641,7 +753,19 @@ public class BuildTimeExtensionRegistry implements LifeCycle<BuildTimeExtensionR
     @Override
     public BuildTimeExtensionRegistry stop() {
         this.buildTimeExtensions.clear();
+        this.beanElements.clear();
+        this.invokers.clear();
         return this;
+    }
+
+    private static final class InvokerRegistration {
+        final OdiExecutableInvokerInfo invokerInfo;
+        final MethodElement methodElement;
+
+        private InvokerRegistration(OdiExecutableInvokerInfo invokerInfo, MethodElement methodElement) {
+            this.invokerInfo = invokerInfo;
+            this.methodElement = methodElement;
+        }
     }
 
     private static final class ExtensionParameter {

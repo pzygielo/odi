@@ -16,6 +16,7 @@
 package org.eclipse.odi.cdi.processor.extensions;
 
 import io.micronaut.annotation.processing.visitor.JavaVisitorContext;
+import io.micronaut.annotation.processing.visitor.ElementProvider;
 import io.micronaut.core.util.StringUtils;
 import io.micronaut.inject.ast.ClassElement;
 import io.micronaut.inject.ast.Element;
@@ -71,11 +72,19 @@ final class AnnotatedConstructAnnotationTarget implements AnnotationTarget {
 
     AnnotatedConstructAnnotationTarget(Element element, Types types, JavaVisitorContext visitorContext) {
         Object nativeType = element.getNativeType();
+        if (nativeType instanceof ElementProvider) {
+            javax.lang.model.element.Element nativeElement = ((ElementProvider) nativeType).element();
+            if (nativeElement != null) {
+                nativeType = nativeElement;
+            }
+        }
         if (nativeType instanceof TypeVariable) {
             // TypeVariable getAnnotationMirrors doesn't return anything
             this.annotatedConstruct = ((TypeVariable) nativeType).asElement();
-        } else {
+        } else if (nativeType instanceof AnnotatedConstruct) {
             this.annotatedConstruct = (AnnotatedConstruct) nativeType;
+        } else {
+            this.annotatedConstruct = null;
         }
         this.visitorContext = visitorContext;
         this.types = types;
@@ -220,18 +229,20 @@ final class AnnotatedConstructAnnotationTarget implements AnnotationTarget {
             return false;
         }
         AnnotatedConstructAnnotationTarget other = (AnnotatedConstructAnnotationTarget) o;
+        if (annotatedConstruct == null || other.annotatedConstruct == null) {
+            return annotatedConstruct == other.annotatedConstruct;
+        }
         return annotatedConstruct.equals(other.annotatedConstruct);
     }
 
     @Override
     public int hashCode() {
-        return annotatedConstruct.hashCode();
+        return annotatedConstruct == null ? 0 : annotatedConstruct.hashCode();
     }
 
     private ClassElement asClassElement(DeclaredType declaredType) {
-        javax.lang.model.element.Element annotationElement = declaredType.asElement();
         JavaVisitorContext javaVisitorContext = visitorContext;
-        ClassElement classElement = javaVisitorContext.getElementFactory().newClassElement((TypeElement) declaredType.asElement(), visitorContext.getAnnotationUtils().getAnnotationMetadata(annotationElement));
+        ClassElement classElement = javaVisitorContext.getElementFactory().newClassElement((TypeElement) declaredType.asElement(), javaVisitorContext.getElementAnnotationMetadataFactory());
         return classElement;
     }
 

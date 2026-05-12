@@ -78,7 +78,10 @@ final class RuntimeMetaAnnotations {
      */
     boolean isScope(Class<? extends Annotation> annotationType) {
         if (annotationType != null) {
-            return annotationType.isAnnotationPresent(Scope.class) || this.scopes.containsKey(annotationType);
+            return annotationType.isAnnotationPresent(Scope.class) ||
+                    annotationType.isAnnotationPresent(NormalScope.class) ||
+                    this.scopes.containsKey(annotationType) ||
+                    this.normalScopes.containsKey(annotationType);
         }
         return false;
     }

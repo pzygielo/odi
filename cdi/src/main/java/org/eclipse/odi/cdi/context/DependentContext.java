@@ -56,7 +56,7 @@ public final class DependentContext implements Context {
         T bean = contextual.create(creationalContext);
         if (creationalContext instanceof OdiCreationalContext) {
             CreatedBean<T> createdBean = ((OdiCreationalContext<T>) creationalContext).getCreatedBean();
-            if (createdBean instanceof BeanRegistration) {
+            if (createdBean instanceof BeanRegistration && resolutionContext != null) {
                 resolutionContext.addDependentBean((BeanRegistration<T>) createdBean);
             }
         }

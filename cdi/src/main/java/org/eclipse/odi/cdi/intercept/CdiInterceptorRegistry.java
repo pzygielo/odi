@@ -26,8 +26,10 @@ import io.micronaut.core.beans.BeanConstructor;
 import io.micronaut.core.type.Executable;
 import jakarta.inject.Singleton;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.List;
 
 /**
  * CDI specific interceptor registry that supports custom interceptor order.
@@ -47,6 +49,7 @@ public class CdiInterceptorRegistry implements InterceptorRegistry {
                                                        Collection<BeanRegistration<Interceptor<T, ?>>> interceptors,
                                                        InterceptorKind interceptorKind) {
         Interceptor<T, ?>[] resolvedInterceptors = defaultInterceptorRegistry.resolveInterceptors(method, interceptors, interceptorKind);
+        resolvedInterceptors = selectInterceptorsForKind(resolvedInterceptors, interceptorKind);
         sortInterceptors(resolvedInterceptors);
         return resolvedInterceptors;
     }
@@ -54,8 +57,24 @@ public class CdiInterceptorRegistry implements InterceptorRegistry {
     @Override
     public <T> Interceptor<T, T>[] resolveConstructorInterceptors(BeanConstructor<T> constructor, Collection<BeanRegistration<Interceptor<T, T>>> interceptors) {
         Interceptor<T, T>[] resolvedInterceptors = defaultInterceptorRegistry.resolveConstructorInterceptors(constructor, interceptors);
+        resolvedInterceptors = selectInterceptorsForKind(resolvedInterceptors, InterceptorKind.AROUND_CONSTRUCT);
         sortInterceptors(resolvedInterceptors);
         return resolvedInterceptors;
+    }
+
+    private <I extends Interceptor<?, ?>> I[] selectInterceptorsForKind(I[] interceptors,
+                                                                        InterceptorKind interceptorKind) {
+        List<I> selected = new ArrayList<>(interceptors.length);
+        for (I interceptor : interceptors) {
+            if (!(interceptor instanceof JakartaInterceptorAdapter<?> jakartaInterceptorAdapter)
+                    || jakartaInterceptorAdapter.intercepts(interceptorKind)) {
+                selected.add(interceptor);
+            }
+        }
+        if (selected.size() == interceptors.length) {
+            return interceptors;
+        }
+        return selected.toArray(Arrays.copyOf(interceptors, selected.size()));
     }
 
     private void sortInterceptors(Interceptor<?, ?>[] resolvedInterceptors) {

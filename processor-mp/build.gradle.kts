@@ -1,0 +1,12 @@
+plugins {
+    id("org.eclipse.odi.build.internal.module")
+}
+
+description = "ODI Processor MP"
+
+dependencies {
+    implementation(project(":micronaut-odi-processor-cdi"))
+    implementation(libs.microprofile.config.api)
+
+    testImplementation(mn.micronaut.test.spock)
+}

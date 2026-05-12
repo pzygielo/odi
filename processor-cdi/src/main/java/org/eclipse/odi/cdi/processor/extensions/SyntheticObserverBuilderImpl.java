@@ -19,6 +19,7 @@ import io.micronaut.core.annotation.Nullable;
 import io.micronaut.inject.ast.ClassElement;
 import io.micronaut.inject.visitor.VisitorContext;
 import jakarta.enterprise.event.TransactionPhase;
+import jakarta.enterprise.inject.build.compatible.spi.InvokerInfo;
 import jakarta.enterprise.inject.build.compatible.spi.SyntheticObserver;
 import jakarta.enterprise.inject.build.compatible.spi.SyntheticObserverBuilder;
 import jakarta.enterprise.inject.build.compatible.spi.Types;
@@ -260,6 +261,18 @@ final class SyntheticObserverBuilderImpl<T> extends AbstractSyntheticBuilder imp
         super.withParam(key, value);
         return this;
 
+    }
+
+    @Override
+    public SyntheticObserverBuilder<T> withParam(String key, InvokerInfo value) {
+        super.withParam(key, value);
+        return this;
+    }
+
+    @Override
+    public SyntheticObserverBuilder<T> withParam(String key, InvokerInfo[] value) {
+        super.withParam(key, value);
+        return this;
     }
 
     @Override

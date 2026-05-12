@@ -1,0 +1,14 @@
+[versions]
+micronaut = "5.0.0-SNAPSHOT"
+micronaut-test = "5.0.0-M6"
+logback = "1.5.32"
+slf4j = "2.0.17"
+
+[libraries]
+logback = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+micronaut-context = { module = "io.micronaut:micronaut-context", version.ref = "micronaut" }
+micronaut-inject = { module = "io.micronaut:micronaut-inject", version.ref = "micronaut" }
+micronaut-inject-java = { module = "io.micronaut:micronaut-inject-java", version.ref = "micronaut" }
+micronaut-inject-java-test = { module = "io.micronaut:micronaut-inject-java-test", version.ref = "micronaut" }
+micronaut-test-junit5 = { module = "io.micronaut.test:micronaut-test-junit5", version.ref = "micronaut-test" }
+micronaut-test-spock = { module = "io.micronaut.test:micronaut-test-spock", version.ref = "micronaut-test" }

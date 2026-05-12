@@ -36,6 +36,7 @@ import jakarta.enterprise.inject.spi.EventContext;
 import jakarta.enterprise.util.Nonbinding;
 import jakarta.inject.Singleton;
 import org.eclipse.odi.cdi.annotation.meta.RuntimeMetaAnnotation;
+import org.eclipse.odi.cdi.OdiSyntheticParameters;
 import org.eclipse.odi.cdi.processor.CdiUtil;
 
 import java.lang.annotation.Annotation;
@@ -79,6 +80,7 @@ public final class BuildTimeExtensionBeanVisitor implements BeanElementVisitor<A
                 final List<SyntheticBeanBuilderImpl<?>> syntheticBeanBuilders =
                         syntheticComponents.getSyntheticBeanBuilders();
                 for (SyntheticBeanBuilderImpl<?> syntheticBeanBuilder : syntheticBeanBuilders) {
+                    registerSyntheticParameters(syntheticBeanBuilder);
                     final ClassElement beanType = syntheticBeanBuilder.getBeanType();
                     final Class<? extends SyntheticBeanCreator<?>> creatorClass = syntheticBeanBuilder.getCreatorClass();
 
@@ -99,6 +101,7 @@ public final class BuildTimeExtensionBeanVisitor implements BeanElementVisitor<A
 
                 List<SyntheticObserverBuilderImpl<?>> syntheticObserverBuilders = syntheticComponents.getSyntheticObserverBuilders();
                 for (SyntheticObserverBuilderImpl<?> syntheticObserverBuilder : syntheticObserverBuilders) {
+                    registerSyntheticParameters(syntheticObserverBuilder);
                     ClassElement eventType = syntheticObserverBuilder.getEventType();
                     ClassElement observerClass = syntheticObserverBuilder.getObserverClass();
                     if (eventType != null && observerClass != null) {
@@ -125,6 +128,7 @@ public final class BuildTimeExtensionBeanVisitor implements BeanElementVisitor<A
                     }
                 }
             }
+            registry.validateInvokers(visitorContext);
             registry.runValidation(visitorContext);
         } finally {
             applicationClassElement = null;
@@ -238,6 +242,13 @@ public final class BuildTimeExtensionBeanVisitor implements BeanElementVisitor<A
             }
         } else {
             beanFactory.qualifier(AnnotationValue.builder(Primary.class).build());
+        }
+    }
+
+    private void registerSyntheticParameters(AbstractSyntheticBuilder syntheticBuilder) {
+        if (!syntheticBuilder.getParams().isEmpty()) {
+            String id = OdiSyntheticParameters.register(syntheticBuilder.getParams());
+            syntheticBuilder.withParam(OdiSyntheticParameters.PROPERTY, id);
         }
     }
 

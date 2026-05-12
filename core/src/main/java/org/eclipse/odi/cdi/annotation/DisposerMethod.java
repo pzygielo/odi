@@ -33,4 +33,8 @@ import io.micronaut.core.annotation.Internal;
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface DisposerMethod {
+    /**
+     * @return Whether the disposer method is static.
+     */
+    boolean staticMethod() default false;
 }

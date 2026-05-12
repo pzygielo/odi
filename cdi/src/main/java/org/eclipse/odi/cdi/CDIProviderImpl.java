@@ -15,9 +15,6 @@
  */
 package org.eclipse.odi.cdi;
 
-import java.util.Map;
-
-import io.micronaut.context.ApplicationContext;
 import io.micronaut.core.annotation.Internal;
 import jakarta.enterprise.inject.spi.CDI;
 import jakarta.enterprise.inject.spi.CDIProvider;
@@ -29,10 +26,6 @@ import jakarta.enterprise.inject.spi.CDIProvider;
 public class CDIProviderImpl implements CDIProvider {
     @Override
     public CDI<Object> getCDI() {
-        final Map<ApplicationContext, OdiSeContainer> runningContainers = OdiSeContainer.RUNNING_CONTAINERS;
-        if (!runningContainers.isEmpty()) {
-            return runningContainers.values().iterator().next();
-        }
-        throw new IllegalStateException("No running SeContainer present");
+        return OdiSeContainer.currentContainer();
     }
 }

@@ -69,7 +69,9 @@ final class ClassInfoImpl extends DeclarationInfoImpl implements ClassInfo {
 
     @Override
     public String simpleName() {
-        return classElement.getSimpleName();
+        String simpleName = classElement.getSimpleName();
+        int nestedClassSeparator = simpleName.lastIndexOf('$');
+        return nestedClassSeparator == -1 ? simpleName : simpleName.substring(nestedClassSeparator + 1);
     }
 
     @Override
@@ -102,6 +104,11 @@ final class ClassInfoImpl extends DeclarationInfoImpl implements ClassInfo {
         final Type type = superClass();
         if (type != null) {
             return type.asDeclaration().asClass();
+        }
+        if (!Object.class.getName().equals(classElement.getName())) {
+            ClassElement objectElement = visitorContext.getClassElement(Object.class)
+                    .orElse(ClassElement.of(Object.class));
+            return new ClassInfoImpl(objectElement, types, visitorContext);
         }
         return null;
     }

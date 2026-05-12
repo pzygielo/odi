@@ -32,8 +32,10 @@ import jakarta.enterprise.context.spi.Context;
 import jakarta.enterprise.context.spi.Contextual;
 import jakarta.enterprise.context.spi.CreationalContext;
 import jakarta.enterprise.inject.CreationException;
+import jakarta.enterprise.inject.IllegalProductException;
 
 import java.lang.annotation.Annotation;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -45,7 +47,7 @@ import java.util.stream.Collectors;
  */
 final class OdiCustomScopeRegistry implements CustomScopeRegistry {
     private final BeanContext beanContext;
-    private volatile Map<String, Context> contextMap = null;
+    private volatile Map<String, List<Context>> contextMap = null;
     private volatile Map<Context, CustomScope<?>> scopesMap = new ConcurrentHashMap<>();
     private OdiBeanContainer beanContainer;
 
@@ -74,15 +76,22 @@ final class OdiCustomScopeRegistry implements CustomScopeRegistry {
         if (this.contextMap == null) {
             synchronized (this) {
                 if (this.contextMap == null) {
-                    this.contextMap = beanContext.streamOfType(Context.class).collect(Collectors.toMap(
-                            (context -> context.getScope().getName()),
-                            (context -> context)
+                    this.contextMap = beanContext.streamOfType(Context.class).collect(Collectors.groupingBy(
+                            context -> context.getScope().getName()
                     ));
                 }
             }
         }
-        return Optional.ofNullable(contextMap.get(scopeAnnotation))
-                .map(context -> scopesMap.computeIfAbsent(context, OdiCustomScope::new));
+        List<Context> contexts = contextMap.get(scopeAnnotation);
+        if (contexts == null || contexts.isEmpty()) {
+            return Optional.empty();
+        }
+        Context context = contexts.stream()
+                .filter(Context::isActive)
+                .findFirst()
+                .orElse(contexts.get(0));
+        return Optional.of(context)
+                .map(ctx -> scopesMap.computeIfAbsent(ctx, OdiCustomScope::new));
     }
 
     @Override
@@ -100,6 +109,9 @@ final class OdiCustomScopeRegistry implements CustomScopeRegistry {
                         ((OdiCreationalContext<T>) creationalContext).setCreatedBean(createdBean);
                         return createdBean.bean();
                     } catch (BeanCreationException e) {
+                        if (OdiBeanImpl.isNullProducerResult(creationContext.definition(), e)) {
+                            throw new IllegalProductException(e.getMessage(), e);
+                        }
                         throw new CreationException(e.getMessage(), e);
                     }
                 } else {

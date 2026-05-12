@@ -25,6 +25,7 @@ import io.micronaut.inject.BeanType;
 import io.micronaut.inject.qualifiers.Qualifiers;
 import jakarta.enterprise.inject.Default;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Stream;
@@ -56,13 +57,26 @@ public final class DefaultQualifier<T> implements Qualifier<T> {
                 return false;
             }
             if (candidate instanceof BeanDefinition) {
-                Qualifier<?> declaredQualifier = ((BeanDefinition<?>) candidate).getDeclaredQualifier();
-                return declaredQualifier == null
-                        || declaredQualifier.contains(DEFAULT_QUALIFIER)
-                        || declaredQualifier instanceof io.micronaut.core.naming.Named; // CDI applies @Default also on @Named
+                return hasDefaultQualifier((BeanDefinition<?>) candidate);
             }
             return false;
         });
+    }
+
+    static boolean hasDefaultQualifier(BeanDefinition<?> candidate) {
+        AnnotationMetadata annotationMetadata = candidate.getAnnotationMetadata();
+        List<String> qualifiers = new ArrayList<>(annotationMetadata.getAnnotationNamesByStereotype(AnnotationUtil.QUALIFIER));
+        qualifiers.remove(jakarta.enterprise.inject.Any.class.getName());
+        qualifiers.remove(io.micronaut.context.annotation.Any.class.getName());
+        if (qualifiers.isEmpty()) {
+            return true;
+        }
+        if (qualifiers.contains(Default.class.getName())) {
+            return true;
+        }
+        qualifiers.remove(io.micronaut.core.annotation.AnnotationUtil.NAMED);
+        qualifiers.remove("javax.inject.Named");
+        return qualifiers.isEmpty();
     }
 
     private Qualifier<T> getDeclaredQualifier(AnnotationMetadata annotationMetadata) {

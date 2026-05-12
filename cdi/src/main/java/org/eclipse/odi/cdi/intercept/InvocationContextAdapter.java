@@ -20,15 +20,19 @@ import io.micronaut.aop.Interceptor;
 import io.micronaut.aop.InterceptorKind;
 import io.micronaut.aop.InvocationContext;
 import io.micronaut.aop.MethodInvocationContext;
+import io.micronaut.core.annotation.AnnotationMetadata;
 import io.micronaut.core.annotation.NonNull;
 import io.micronaut.core.convert.value.MutableConvertibleValues;
 import io.micronaut.core.util.CollectionUtils;
 import io.micronaut.inject.ExecutableMethod;
+import org.eclipse.odi.cdi.AnnotationUtils;
 
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.AbstractMap;
 import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 
@@ -47,6 +51,7 @@ class InvocationContextAdapter<B> implements jakarta.interceptor.InvocationConte
     private final InterceptorKind kind;
     private int index;
     private B interceptor;
+    private Set<Annotation> interceptorBindings;
 
     InvocationContextAdapter(Interceptor<?, ?> micronautInterceptor, InvocationContext<?, ?> invocationContext,
                              ExecutableMethod<B, Object>[] methods,
@@ -54,7 +59,6 @@ class InvocationContextAdapter<B> implements jakarta.interceptor.InvocationConte
         this.micronautInterceptor = micronautInterceptor;
         this.invocationContext = invocationContext;
         this.methods = methods;
-        this.index = methods.length;
         this.kind = kind;
     }
 
@@ -65,7 +69,7 @@ class InvocationContextAdapter<B> implements jakarta.interceptor.InvocationConte
      */
     public Object invoke(@NonNull B interceptor) {
         this.interceptor = interceptor;
-        return methods[--index].invoke(interceptor, this);
+        return methods[index++].invoke(interceptor, this);
     }
 
     @Override
@@ -125,26 +129,61 @@ class InvocationContextAdapter<B> implements jakarta.interceptor.InvocationConte
     }
 
     @Override
+    public Set<Annotation> getInterceptorBindings() {
+        Set<Annotation> bindings = interceptorBindings;
+        if (bindings == null) {
+            AnnotationMetadata annotationMetadata = getInterceptorBindingMetadata();
+            bindings = AnnotationUtils.synthesizeInterceptorBindingAnnotations(annotationMetadata);
+            interceptorBindings = bindings;
+        }
+        return bindings;
+    }
+
+    protected AnnotationMetadata getInterceptorBindingMetadata() {
+        return invocationContext.getAnnotationMetadata();
+    }
+
+    @Override
+    public <T extends Annotation> Set<T> getInterceptorBindings(Class<T> annotationType) {
+        Set<T> resolved = new LinkedHashSet<>();
+        for (Annotation binding : getInterceptorBindings()) {
+            if (annotationType.isInstance(binding)) {
+                resolved.add(annotationType.cast(binding));
+            }
+        }
+        return Set.copyOf(resolved);
+    }
+
+    @Override
+    public <T extends Annotation> T getInterceptorBinding(Class<T> annotationType) {
+        Set<T> bindings = getInterceptorBindings(annotationType);
+        if (bindings.isEmpty()) {
+            return null;
+        }
+        return bindings.iterator().next();
+    }
+
+    @Override
     public Object proceed() {
         if (kind == InterceptorKind.AROUND) {
-            if (index <= 0) {
+            if (index >= methods.length) {
                 return invocationContextProceed();
             } else {
                 if (interceptor == null) {
                     throw new IllegalStateException();
                 } else {
-                    return methods[--index].invoke(interceptor, this);
+                    return methods[index++].invoke(interceptor, this);
                 }
             }
         } else {
-            if (index <= 0) {
+            if (index >= methods.length) {
                 invocationContextProceed();
                 return null;
             } else {
                 if (interceptor == null) {
                     throw new IllegalStateException();
                 } else {
-                    methods[--index].invoke(interceptor, this);
+                    methods[index++].invoke(interceptor, this);
                     return null;
                 }
             }

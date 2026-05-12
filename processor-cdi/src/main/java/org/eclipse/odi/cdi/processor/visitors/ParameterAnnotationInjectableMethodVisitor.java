@@ -46,12 +46,16 @@ abstract class ParameterAnnotationInjectableMethodVisitor<T extends Annotation> 
         element.removeAnnotation(getParameterAnnotation());
     }
 
+    protected boolean supportsInheritedMethods() {
+        return false;
+    }
+
     @Override
     public void visitMethod(MethodElement element, VisitorContext context) {
         if (currentClass == null) {
             return;
         }
-        if (!element.getDeclaringType().getName().equals(currentClass.getName())) {
+        if (!supportsInheritedMethods() && !element.getDeclaringType().getName().equals(currentClass.getName())) {
             // Methods aren't inherited
             disqualifyMethod(element);
             return;

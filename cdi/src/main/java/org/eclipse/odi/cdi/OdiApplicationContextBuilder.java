@@ -15,10 +15,7 @@
  */
 package org.eclipse.odi.cdi;
 
-import io.micronaut.context.ApplicationContext;
-import io.micronaut.context.DefaultApplicationContext;
 import io.micronaut.context.DefaultApplicationContextBuilder;
-import io.micronaut.context.scope.CustomScopeRegistry;
 
 /**
  * ODI specific {@link DefaultApplicationContextBuilder}.
@@ -28,15 +25,6 @@ public final class OdiApplicationContextBuilder extends DefaultApplicationContex
         deduceEnvironment(false);
         banner(false);
         allowEmptyProviders(true);
-    }
-
-    @Override
-    protected ApplicationContext newApplicationContext() {
-        return new DefaultApplicationContext(OdiApplicationContextBuilder.this) {
-            @Override
-            protected CustomScopeRegistry createCustomScopeRegistry() {
-                return new OdiCustomScopeRegistry(this);
-            }
-        };
+        customScopeRegistry(OdiCustomScopeRegistry::new);
     }
 }

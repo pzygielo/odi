@@ -51,7 +51,7 @@ final class ObservesMethodProcessor implements ExecutableMethodProcessor<Observe
     }
 
     @Override
-    public void process(BeanDefinition<?> beanDefinition, ExecutableMethod<?, ?> method) {
+    public <B> void process(BeanDefinition<B> beanDefinition, ExecutableMethod<B, ?> method) {
         // Find possibly proxied BeanDefinition
         BeanDefinition<?> targetBeanDefinition = findTargetBeanDefinitions(beanDefinition);
         if (targetBeanDefinition == null) {
@@ -66,7 +66,8 @@ final class ObservesMethodProcessor implements ExecutableMethodProcessor<Observe
 
     public BeanDefinition<?> findTargetBeanDefinitions(BeanDefinition<?> originalBeanDefinition) {
         // We need to get all bean definitions and filter them for cases when bean inherit each other
-        if (SyntheticObserver.class.isAssignableFrom(originalBeanDefinition.getBeanType())) {
+        if (SyntheticObserver.class.isAssignableFrom(originalBeanDefinition.getBeanType())
+                || originalBeanDefinition instanceof AdvisedBeanType) {
             return originalBeanDefinition;
         }
         Collection<BeanDefinition<?>> beanDefinitions =

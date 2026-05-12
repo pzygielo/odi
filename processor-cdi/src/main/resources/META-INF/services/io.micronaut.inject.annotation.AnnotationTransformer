@@ -1,6 +1,8 @@
 org.eclipse.odi.cdi.processor.transformers.TypedTransformer
 org.eclipse.odi.cdi.processor.transformers.AnyQualifierTransformer
 org.eclipse.odi.cdi.processor.transformers.NormalScopeTransformer
+org.eclipse.odi.cdi.processor.transformers.StereotypeTransformer
+org.eclipse.odi.cdi.processor.transformers.VetoedTransformer
 org.eclipse.odi.cdi.processor.transformers.InterceptorBindingTransformer
 org.eclipse.odi.cdi.processor.extensions.javax.JavaxPriorityTransformer
 org.eclipse.odi.cdi.processor.extensions.mp.ConfigPropertyTransformer

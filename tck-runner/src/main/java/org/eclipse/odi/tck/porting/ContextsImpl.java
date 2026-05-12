@@ -17,7 +17,9 @@ package org.eclipse.odi.tck.porting;
 
 import org.eclipse.odi.cdi.context.AbstractContext;
 import org.eclipse.odi.cdi.context.DependentContext;
+import jakarta.enterprise.context.RequestScoped;
 import jakarta.enterprise.context.spi.Context;
+import jakarta.enterprise.inject.spi.CDI;
 import org.jboss.cdi.tck.spi.Contexts;
 
 /**
@@ -45,7 +47,10 @@ public class ContextsImpl implements Contexts<Context> {
 
     @Override
     public Context getRequestContext() {
-        throw new UnsupportedOperationException();
+        return CDI.current().getBeanContainer().getContexts(RequestScoped.class)
+                .stream()
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("Request context not available"));
     }
 
     @Override

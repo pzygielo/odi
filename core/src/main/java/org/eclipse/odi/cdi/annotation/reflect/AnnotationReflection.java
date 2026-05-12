@@ -18,6 +18,7 @@ package org.eclipse.odi.cdi.annotation.reflect;
 import io.micronaut.core.annotation.AnnotationValue;
 import io.micronaut.core.annotation.AnnotationValueBuilder;
 import io.micronaut.core.annotation.AnnotationValueProvider;
+import io.micronaut.core.annotation.AnnotationUtil;
 import io.micronaut.core.annotation.Internal;
 import io.micronaut.core.annotation.Nullable;
 import jakarta.enterprise.util.Nonbinding;
@@ -25,8 +26,10 @@ import jakarta.enterprise.util.Nonbinding;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.Queue;
 import java.util.function.Consumer;
 
@@ -103,15 +106,21 @@ public final class AnnotationReflection {
     private static void toAnnotationValues(Class<? extends Annotation> type,
                                            AnnotationValueBuilder<? extends Annotation> builder,
                                            Annotation value) {
+        List<String> nonBindingMembers = new ArrayList<>(2);
         for (Method attribute : type.getDeclaredMethods()) {
             try {
                 attribute.setAccessible(true);
-                if (!attribute.isAnnotationPresent(Nonbinding.class)) {
-                    build(builder, attribute.getName(), attribute.invoke(value), attribute.getDefaultValue());
+                if (attribute.isAnnotationPresent(Nonbinding.class)) {
+                    nonBindingMembers.add(attribute.getName());
                 }
+                build(builder, attribute.getName(), attribute.invoke(value), attribute.getDefaultValue());
             } catch (ReflectiveOperationException e) {
                 throw new RuntimeException("Cannot access: " + attribute.getName(), e);
             }
+        }
+        if (!nonBindingMembers.isEmpty()) {
+            nonBindingMembers.add(AnnotationUtil.NON_BINDING_ATTRIBUTE);
+            builder.member(AnnotationUtil.NON_BINDING_ATTRIBUTE, nonBindingMembers.toArray(String[]::new));
         }
     }
 

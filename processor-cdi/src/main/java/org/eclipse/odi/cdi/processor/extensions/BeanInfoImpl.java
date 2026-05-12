@@ -135,24 +135,27 @@ class BeanInfoImpl implements BeanInfo {
 
     @Override
     public boolean isClassBean() {
-        final Element producingElement = beanElement.getProducingElement();
-        if (beanElement.hasAnnotation(Interceptor.class)) {
+        final Element producingElement = getOriginatingProducingElement();
+        if (isInterceptor()) {
             // exclude interceptors
             return false;
         }
-        return producingElement instanceof ClassElement
-                || (producingElement instanceof BeanElementBuilder
-                            && ((BeanElementBuilder) producingElement).getOriginatingElement() instanceof ClassElement);
+        return producingElement instanceof ClassElement;
+    }
+
+    @Override
+    public boolean isInterceptor() {
+        return beanElement.hasAnnotation(Interceptor.class);
     }
 
     @Override
     public boolean isProducerMethod() {
-        return beanElement.getProducingElement() instanceof MethodElement;
+        return getOriginatingProducingElement() instanceof MethodElement;
     }
 
     @Override
     public boolean isProducerField() {
-        return beanElement.getProducingElement() instanceof FieldElement;
+        return getOriginatingProducingElement() instanceof FieldElement;
     }
 
     @Override
@@ -164,9 +167,10 @@ class BeanInfoImpl implements BeanInfo {
     @Override
     public MethodInfo producerMethod() {
         if (isProducerMethod()) {
+            MethodElement methodElement = (MethodElement) getOriginatingProducingElement();
             return new MethodInfoImpl(
-                    this.classInfo,
-                    (MethodElement) beanElement.getProducingElement(),
+                    new ClassInfoImpl(methodElement.getDeclaringType(), new TypesImpl(visitorContext), visitorContext),
+                    methodElement,
                     new TypesImpl(visitorContext),
                     visitorContext
             );
@@ -177,14 +181,23 @@ class BeanInfoImpl implements BeanInfo {
     @Override
     public FieldInfo producerField() {
         if (isProducerField()) {
+            FieldElement fieldElement = (FieldElement) getOriginatingProducingElement();
             return new FieldInfoImpl(
-                    this.classInfo,
-                    (FieldElement) beanElement.getProducingElement(),
+                    new ClassInfoImpl(fieldElement.getDeclaringType(), new TypesImpl(visitorContext), visitorContext),
+                    fieldElement,
                     new TypesImpl(visitorContext),
                     visitorContext
             );
         }
         return null;
+    }
+
+    private Element getOriginatingProducingElement() {
+        Element producingElement = beanElement.getProducingElement();
+        if (producingElement instanceof BeanElementBuilder) {
+            return ((BeanElementBuilder) producingElement).getProducingElement();
+        }
+        return producingElement;
     }
 
     @Override

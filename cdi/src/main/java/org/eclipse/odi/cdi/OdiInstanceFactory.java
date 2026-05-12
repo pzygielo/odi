@@ -65,12 +65,14 @@ public class OdiInstanceFactory {
             }
             qualifier = Qualifiers.forArgument(argument);
             InjectionPoint<?> injectionPoint = resolveInjectionPoint(resolutionContext, argumentInjectionPoint);
-            cdiInjectionPoint = new OdiInjectionPoint(
-                    resolutionContext.getContext().getClassLoader(),
-                    new OdiBeanImpl<>(beanContainer.getBeanContext(), injectionPoint.getDeclaringBean()),
-                    injectionPoint,
-                    injectionPoint instanceof ArgumentInjectionPoint ? ((ArgumentInjectionPoint<?, ?>) injectionPoint).asArgument() : injectArgument
-            );
+            if (injectionPoint != null) {
+                cdiInjectionPoint = new OdiInjectionPoint(
+                        resolutionContext.getContext().getClassLoader(),
+                        new OdiBeanImpl<>(beanContainer.getBeanContext(), injectionPoint.getDeclaringBean()),
+                        injectionPoint,
+                        injectionPoint instanceof ArgumentInjectionPoint ? ((ArgumentInjectionPoint<?, ?>) injectionPoint).asArgument() : injectArgument
+                );
+            }
         }
 
 
@@ -88,8 +90,11 @@ public class OdiInstanceFactory {
         Class<?> creatorType = declaringBean.getDeclaringType().orElse(declaringBean.getBeanType());
         if (SyntheticBeanCreator.class.isAssignableFrom(creatorType)) {
             BeanResolutionContext.Path path = resolutionContext.getPath();
-            for (BeanResolutionContext.Segment<?> segment : path) {
+            for (BeanResolutionContext.Segment<?, ?> segment : path) {
                 InjectionPoint<?> injectionPoint = segment.getInjectionPoint();
+                if (injectionPoint == null) {
+                    continue;
+                }
                 BeanDefinition<?> ipBean = injectionPoint.getDeclaringBean();
                 Class<?> declaring = ipBean.getDeclaringType().orElse(ipBean.getBeanType());
                 if (!SyntheticBeanCreator.class.isAssignableFrom(declaring)) {

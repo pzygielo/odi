@@ -49,6 +49,11 @@ public @interface ObservesMethod {
     boolean async() default false;
 
     /**
+     * @return Whether the observer method is static
+     */
+    boolean staticMethod() default false;
+
+    /**
      * @return The priority
      */
     int priority() default DEFAULT_PRIORITY;

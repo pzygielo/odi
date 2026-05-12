@@ -25,6 +25,7 @@ import io.micronaut.inject.ast.ClassElement;
 import io.micronaut.inject.visitor.TypeElementVisitor;
 import io.micronaut.inject.visitor.VisitorContext;
 import jakarta.enterprise.inject.Alternative;
+import org.eclipse.odi.cdi.processor.CdiUtil;
 
 import java.util.Set;
 
@@ -45,7 +46,8 @@ public class AlternativeVisitor implements TypeElementVisitor<Alternative, Objec
         if (!element.hasAnnotation(Bean.class)) {
             element.annotate(Bean.class);
         }
-        if (!element.hasAnnotation(Order.class)) {
+        CdiUtil.visitPriority(context, element);
+        if (!element.hasDeclaredAnnotation(Order.class)) {
             // no priority specified so disable by default
             element.annotate(Order.class, (builder) ->
                     builder.value(Ordered.HIGHEST_PRECEDENCE)

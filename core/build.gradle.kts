@@ -1,0 +1,10 @@
+plugins {
+    id("org.eclipse.odi.build.internal.module")
+}
+
+description = "ODI Core"
+
+dependencies {
+    implementation(libs.cdi.api)
+    implementation(mn.micronaut.inject)
+}

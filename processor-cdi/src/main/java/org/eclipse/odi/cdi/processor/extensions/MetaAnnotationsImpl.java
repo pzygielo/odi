@@ -27,10 +27,14 @@ import io.micronaut.core.annotation.AnnotationValue;
 import io.micronaut.core.annotation.Internal;
 import io.micronaut.inject.ast.ClassElement;
 import io.micronaut.inject.visitor.VisitorContext;
+import jakarta.enterprise.context.NormalScope;
 import jakarta.enterprise.context.spi.AlterableContext;
 import jakarta.enterprise.inject.Stereotype;
 import jakarta.enterprise.inject.build.compatible.spi.ClassConfig;
 import jakarta.enterprise.inject.build.compatible.spi.MetaAnnotations;
+import jakarta.inject.Scope;
+import jakarta.inject.Singleton;
+import org.eclipse.odi.cdi.processor.CdiUtil;
 
 @Internal
 final class MetaAnnotationsImpl implements MetaAnnotations {
@@ -38,6 +42,7 @@ final class MetaAnnotationsImpl implements MetaAnnotations {
     private final Set<MetaAnnotationImpl> interceptorBindings = new HashSet<>();
     private final Set<MetaAnnotationImpl> qualifiers = new HashSet<>();
     private final Set<MetaAnnotationImpl> stereotypes = new HashSet<>();
+    private final Set<ClassElement> contexts = new HashSet<>();
     private final VisitorContext visitorContext;
 
     public MetaAnnotationsImpl(VisitorContext visitorContext) {
@@ -93,14 +98,33 @@ final class MetaAnnotationsImpl implements MetaAnnotations {
     public void addContext(
             Class<? extends Annotation> scopeAnnotation,
             Class<? extends AlterableContext> contextClass) {
-        // TODO
+        addContext(scopeAnnotation, null, contextClass);
     }
 
     @Override
     public void addContext(Class<? extends Annotation> scopeAnnotation,
                            boolean isNormal,
                            Class<? extends AlterableContext> contextClass) {
-        // TODO
+        addContext(scopeAnnotation, Boolean.valueOf(isNormal), contextClass);
+    }
+
+    private void addContext(Class<? extends Annotation> scopeAnnotation,
+                            Boolean isNormal,
+                            Class<? extends AlterableContext> contextClass) {
+        final ClassElement scopeElement = visitorContext.getClassElement(scopeAnnotation)
+                .orElseThrow(() -> new RuntimeException("Scope type [" + scopeAnnotation.getName() + "] must be on the application classpath"));
+        if (isNormal != null) {
+            if (isNormal) {
+                scopeElement.annotate(NormalScope.class);
+            } else {
+                scopeElement.annotate(Scope.class);
+            }
+        }
+        final ClassElement contextElement = visitorContext.getClassElement(contextClass)
+                .orElseThrow(() -> new RuntimeException("Context type [" + contextClass.getName() + "] must be on the application classpath"));
+        contextElement.annotate(Singleton.class);
+        CdiUtil.visitBeanDefinition(visitorContext, contextElement);
+        contexts.add(contextElement);
     }
 
     public Set<MetaAnnotationImpl> getInterceptorBindings() {
@@ -113,6 +137,10 @@ final class MetaAnnotationsImpl implements MetaAnnotations {
 
     public Set<MetaAnnotationImpl> getStereotypes() {
         return stereotypes;
+    }
+
+    public Set<ClassElement> getContexts() {
+        return contexts;
     }
 
 }

@@ -17,6 +17,7 @@ package org.eclipse.odi.cdi.processor.extensions;
 
 import io.micronaut.aop.InterceptorBindingDefinitions;
 import io.micronaut.context.annotation.Executable;
+import io.micronaut.core.annotation.AnnotationClassValue;
 import io.micronaut.core.annotation.AnnotationUtil;
 import io.micronaut.core.annotation.AnnotationValue;
 import io.micronaut.core.annotation.Internal;
@@ -34,17 +35,22 @@ import io.micronaut.inject.visitor.VisitorContext;
 import jakarta.enterprise.context.NormalScope;
 import jakarta.enterprise.event.Observes;
 import jakarta.enterprise.event.ObservesAsync;
+import jakarta.enterprise.inject.Disposes;
 import jakarta.enterprise.inject.Produces;
 import jakarta.inject.Qualifier;
 import jakarta.inject.Scope;
 import jakarta.interceptor.Interceptor;
+import jakarta.interceptor.InterceptorBinding;
 import org.eclipse.odi.cdi.processor.CdiUtil;
+import org.eclipse.odi.cdi.processor.transformers.InterceptorBindingTransformer;
+import org.eclipse.odi.cdi.processor.visitors.DisposesMethodVisitor;
 import org.eclipse.odi.cdi.processor.visitors.InjectVisitor;
 import org.eclipse.odi.cdi.processor.visitors.InterceptorVisitor;
 import org.eclipse.odi.cdi.processor.visitors.ObservesAsyncMethodVisitor;
 import org.eclipse.odi.cdi.processor.visitors.ObservesMethodVisitor;
 
 import java.lang.annotation.Annotation;
+import java.lang.annotation.RetentionPolicy;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
@@ -68,6 +74,7 @@ public final class BuildTimeExtensionVisitor implements TypeElementVisitor<Objec
     private final Set<ClassElement> interceptorBindings = new HashSet<>();
     private final Set<ClassElement> qualifiers = new HashSet<>();
     private final Set<ClassElement> stereotypes = new HashSet<>();
+    private final Set<ClassElement> contexts = new HashSet<>();
     private Set<String> beanPackages = new HashSet<>();
 
     /**
@@ -109,6 +116,7 @@ public final class BuildTimeExtensionVisitor implements TypeElementVisitor<Objec
             buildInterceptorBindingConfig(meta);
             buildDiscoveryConfig(meta.getQualifiers(), this.qualifiers);
             buildDiscoveryConfig(meta.getStereotypes(), this.stereotypes);
+            this.contexts.addAll(meta.getContexts());
         }
     }
 
@@ -146,8 +154,12 @@ public final class BuildTimeExtensionVisitor implements TypeElementVisitor<Objec
                 final Set<String> scannedClassNames = this.discovery
                         .getScannedClasses()
                         .getScannedClassNames();
+                final Set<String> handledClassNames = new HashSet<>();
                 if (CollectionUtils.isNotEmpty(beanPackages)) {
                     for (String beanPackage : beanPackages) {
+                        for (ClassElement interceptorBinding : visitorContext.getClassElements(beanPackage, InterceptorBinding.class.getName())) {
+                            configureInterceptorBinding(interceptorBinding);
+                        }
                         final ClassElement[] classElements = visitorContext.getClassElements(beanPackage,
                                                                                              Interceptor.class.getName(),
                                                                                              Scope.class.getName(),
@@ -156,23 +168,44 @@ public final class BuildTimeExtensionVisitor implements TypeElementVisitor<Objec
                                                                                              AnnotationUtil.SCOPE,
                                                                                              AnnotationUtil.QUALIFIER);
                         for (ClassElement classElement : classElements) {
-                            if (!scannedClassNames.contains(classElement.getName())) {
+                            if (!scannedClassNames.contains(classElement.getName()) && handledClassNames.add(classElement.getName())) {
                                 handleScannedClass(visitorContext, classElement);
                             }
                         }
                     }
                 }
+                for (ClassElement context : contexts) {
+                    if (!scannedClassNames.contains(context.getName()) && handledClassNames.add(context.getName())) {
+                        handleScannedClass(visitorContext, context);
+                    }
+                }
 
                 for (String scannedClassName : scannedClassNames) {
-                    visitorContext.getClassElement(scannedClassName).ifPresent(scannedClass -> {
-                        handleScannedClass(visitorContext, scannedClass);
-                    });
+                    if (handledClassNames.add(scannedClassName)) {
+                        visitorContext.getClassElement(scannedClassName).ifPresent(scannedClass -> {
+                            handleScannedClass(visitorContext, scannedClass);
+                        });
+                    }
                 }
             }
         }
     }
 
+    private void configureInterceptorBinding(ClassElement interceptorBinding) {
+        if (!interceptorBinding.hasDeclaredAnnotation(InterceptorBinding.class)) {
+            return;
+        }
+        for (AnnotationValue<?> av : InterceptorBindingTransformer.INTERCEPTOR_BINDING_VALUES) {
+            interceptorBinding.annotate(AnnotationValue.builder(av, RetentionPolicy.RUNTIME)
+                    .member("value", new AnnotationClassValue<>(interceptorBinding.getName()))
+                    .build());
+        }
+        this.interceptorBindings.add(interceptorBinding);
+        this.supportedAnnotationNames.add(interceptorBinding.getName());
+    }
+
     private void handleScannedClass(VisitorContext visitorContext, ClassElement scannedClass) {
+        configureInterceptorBindings(visitorContext, scannedClass);
         this.registry.runEnhancement(scannedClass, scannedClass, visitorContext);
         boolean isInterceptor = scannedClass.hasAnnotation(Interceptor.class);
         if (isInterceptor) {
@@ -187,6 +220,15 @@ public final class BuildTimeExtensionVisitor implements TypeElementVisitor<Objec
                 .onlyInstance();
         ElementQuery<MethodElement> instanceMethods = ElementQuery.ALL_METHODS
                 .onlyInstance();
+        ElementQuery<MethodElement> invokableMethods = ElementQuery.ALL_METHODS
+                .onlyDeclared()
+                .onlyConcrete()
+                .modifiers(modifiers -> !modifiers.contains(ElementModifier.PRIVATE));
+        ElementQuery<MethodElement> staticInvokableMethods = ElementQuery.ALL_METHODS
+                .onlyStatic()
+                .onlyDeclared()
+                .onlyConcrete()
+                .modifiers(modifiers -> !modifiers.contains(ElementModifier.PRIVATE));
 
 
         final ElementQuery<MethodElement> executableMethods = instanceMethods
@@ -197,34 +239,50 @@ public final class BuildTimeExtensionVisitor implements TypeElementVisitor<Objec
                 .onlyDeclared()
                 .onlyConcrete()
                 .modifiers(m -> m.contains(ElementModifier.PUBLIC) && !m.contains(ElementModifier.FINAL))
-                .annotated((annotationMetadata -> annotationMetadata.hasAnnotation(InterceptorBindingDefinitions.class)));
+                .filter(method -> hasInterceptorBinding(visitorContext, method));
         final Predicate<MethodElement> isObservesMethod = m ->
                 m.hasParameters() &&
                         Arrays.stream(m.getParameters())
                                 .anyMatch(p -> p.hasDeclaredAnnotation(Observes.class) || p.hasDeclaredAnnotation(ObservesAsync.class)
                                 );
+        final Predicate<MethodElement> isDisposesMethod = m ->
+                m.hasParameters() &&
+                        Arrays.stream(m.getParameters())
+                                .anyMatch(p -> p.hasDeclaredAnnotation(Disposes.class));
         final ElementQuery<MethodElement> observesMethods = instanceMethods
                 .filter(isObservesMethod);
-        final ElementQuery<MethodElement> producesMethods = instanceMethods
+        final ElementQuery<MethodElement> disposesMethods = instanceMethods
+                .onlyDeclared()
+                .onlyConcrete()
+                .filter(isDisposesMethod);
+        final ElementQuery<MethodElement> staticDisposesMethods = ElementQuery.ALL_METHODS
+                .onlyDeclared()
+                .modifiers(modifiers -> modifiers.contains(ElementModifier.STATIC))
+                .filter(isDisposesMethod);
+        final ElementQuery<MethodElement> producesMethods = ElementQuery.ALL_METHODS
                 .annotated(ann -> ann.hasDeclaredAnnotation(Produces.class));
-        final ElementQuery<FieldElement> producesFields = instanceFields
+        final ElementQuery<FieldElement> producesFields = ElementQuery.ALL_FIELDS
                 .annotated(ann -> ann.hasDeclaredAnnotation(Produces.class));
         final Consumer<BeanElementBuilder> producesConfigurer = builder -> {
             final Element producingElement = builder.getProducingElement();
             final Set<String> annotationNames = producingElement.getDeclaredAnnotationNames();
             for (String annotationName : annotationNames) {
                 final AnnotationValue<Annotation> av = producingElement.getAnnotation(annotationName);
-                if (av != null && !av.getAnnotationName().equals(Produces.class.getName())) {
+                if (av != null
+                        && !av.getAnnotationName().equals(Produces.class.getName())
+                        && !av.getAnnotationName().equals(Executable.class.getName())) {
                     builder.annotate(av);
                 }
             }
         };
         BeanElementBuilder beanElementBuilder = applicationClassElement
                 .addAssociatedBean(scannedClass);
+        copyRegisteredQualifiers(scannedClass, beanElementBuilder);
+        registry.runDiscoveryEnhancements(beanElementBuilder);
         CdiUtil.visitBeanDefinition(visitorContext, beanElementBuilder);
         registry.runDiscoveryEnhancements(beanElementBuilder);
         if (!isInterceptor && !scannedClass.isFinal()) {
-            if (scannedClass.getAnnotationMetadata().hasDeclaredAnnotation(InterceptorBindingDefinitions.class)) {
+            if (hasInterceptorBinding(visitorContext, scannedClass)) {
                 beanElementBuilder.intercept();
             }
             beanElementBuilder = beanElementBuilder.withMethods(interceptedMethods, BeanMethodElement::intercept);
@@ -234,14 +292,16 @@ public final class BuildTimeExtensionVisitor implements TypeElementVisitor<Objec
                         .forEach(m -> injectVisitor.visitMethod(m, visitorContext));
         scannedClass.getEnclosedElements(instanceFields.onlyInjected())
                         .forEach(m -> injectVisitor.visitField(m, visitorContext));
+        DisposesMethodVisitor disposesVisitor = new DisposesMethodVisitor();
+        disposesVisitor.visitClass(scannedClass, visitorContext);
+        scannedClass.getEnclosedElements(disposesMethods)
+                .forEach(m -> disposesVisitor.visitMethod(m, visitorContext));
+        scannedClass.getEnclosedElements(staticDisposesMethods)
+                .forEach(m -> disposesVisitor.visitMethod(m, visitorContext));
         beanElementBuilder
-                .withMethods(executableMethods, BeanMethodElement::executable)
                 .withMethods(observesMethods, observesMethod -> {
                     if (isObservesMethod.test(observesMethod)) {
-                        observesMethod.executable();
-                        observesMethod.annotate(Executable.class, builder ->
-                                builder.member("processOnStartup", true)
-                        );
+                        observesMethod.executable(true);
                         handleObservesMethod(
                                 scannedClass,
                                 observesMethod,
@@ -249,9 +309,50 @@ public final class BuildTimeExtensionVisitor implements TypeElementVisitor<Objec
                         );
                     }
                 })
+                .withMethods(invokableMethods, BeanMethodElement::executable)
+                .withMethods(staticInvokableMethods, BeanMethodElement::executable)
+                .withMethods(executableMethods, BeanMethodElement::executable)
                 .produceBeans(producesMethods, producesConfigurer)
                 .produceBeans(producesFields, producesConfigurer)
                 .inject();
+    }
+
+    private void copyRegisteredQualifiers(ClassElement source, BeanElementBuilder target) {
+        for (ClassElement qualifier : qualifiers) {
+            AnnotationValue<Annotation> annotationValue = source.getAnnotation(qualifier.getName());
+            if (annotationValue != null) {
+                target.annotate(annotationValue);
+            }
+        }
+    }
+
+    private void configureInterceptorBindings(VisitorContext visitorContext, ClassElement scannedClass) {
+        scannedClass.getDeclaredAnnotationNames()
+                .forEach(annotationName -> configurePotentialInterceptorBinding(visitorContext, annotationName));
+        scannedClass.getEnclosedElements(ElementQuery.ALL_METHODS.includeHiddenElements())
+                .forEach(method -> method.getDeclaredAnnotationNames()
+                        .forEach(annotationName -> configurePotentialInterceptorBinding(visitorContext, annotationName)));
+        scannedClass.getEnclosedElements(ElementQuery.ALL_FIELDS.includeHiddenElements())
+                .forEach(field -> field.getDeclaredAnnotationNames()
+                        .forEach(annotationName -> configurePotentialInterceptorBinding(visitorContext, annotationName)));
+    }
+
+    private void configurePotentialInterceptorBinding(VisitorContext visitorContext, String annotationName) {
+        visitorContext.getClassElement(annotationName)
+                .filter(annotation -> annotation.hasDeclaredAnnotation(InterceptorBinding.class))
+                .ifPresent(this::configureInterceptorBinding);
+    }
+
+    private boolean hasInterceptorBinding(VisitorContext visitorContext, Element element) {
+        if (element.getAnnotationMetadata().hasAnnotation(InterceptorBindingDefinitions.class)) {
+            return true;
+        }
+        return element.getDeclaredAnnotationNames()
+                .stream()
+                .anyMatch(annotationName -> interceptorBindings.stream().anyMatch(binding -> binding.getName().equals(annotationName))
+                        || visitorContext.getClassElement(annotationName)
+                        .map(annotation -> annotation.hasDeclaredAnnotation(InterceptorBinding.class))
+                        .orElse(false));
     }
 
     private static void handleObservesMethod(ClassElement classElement, MethodElement methodElement, VisitorContext visitorContext) {

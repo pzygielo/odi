@@ -31,7 +31,9 @@ import jakarta.interceptor.Interceptor;
 public final class AnnotationUtil {
 
     public static final String ANN_NAME = io.micronaut.core.annotation.AnnotationUtil.NAMED;
+    public static final String ANN_BEAN_TYPE = "org.eclipse.odi.cdi.annotation.OdiBeanType";
     public static final String ANN_DISPOSER_METHOD = "org.eclipse.odi.cdi.annotation.DisposerMethod";
+    public static final String ANN_NAMED_BY_STEREOTYPE = "org.eclipse.odi.cdi.annotation.NamedByStereotype";
     public static final String ANN_OBSERVES_METHOD = "org.eclipse.odi.cdi.annotation.ObservesMethod";
 
     private AnnotationUtil() {

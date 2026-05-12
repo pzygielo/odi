@@ -16,9 +16,11 @@
 package org.eclipse.odi.cdi.processor.visitors;
 
 import io.micronaut.core.annotation.AnnotationUtil;
+import io.micronaut.core.annotation.Vetoed;
 import io.micronaut.inject.ast.ClassElement;
 import io.micronaut.inject.visitor.TypeElementVisitor;
 import io.micronaut.inject.visitor.VisitorContext;
+import jakarta.enterprise.context.Dependent;
 import org.eclipse.odi.cdi.processor.CdiUtil;
 
 /**
@@ -28,8 +30,16 @@ public class ScopeVisitor implements TypeElementVisitor<Object, Object> {
 
     @Override
     public void visitClass(ClassElement element, VisitorContext context) {
+        if (element.hasAnnotation(Dependent.class) && !element.hasDeclaredAnnotation(Dependent.class)) {
+            element.removeAnnotation(Dependent.class);
+            if (!org.eclipse.odi.cdi.processor.AnnotationUtil.hasBeanDefiningAnnotation(element)) {
+                element.annotate(Vetoed.class);
+                return;
+            }
+        }
         if (element.hasStereotype(AnnotationUtil.SCOPE)) {
             CdiUtil.visitBeanDefinition(context, element);
+            CdiUtil.visitPriority(context, element);
         }
     }
 

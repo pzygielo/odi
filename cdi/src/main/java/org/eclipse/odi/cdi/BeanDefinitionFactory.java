@@ -32,10 +32,11 @@ public class BeanDefinitionFactory {
 
     @Any
     @Prototype
+    @SuppressWarnings({"rawtypes", "unchecked"})
     final <T> BeanDefinition<T> beanDefinition(InjectionPoint<T> injectionPoint, BeanContext beanContext) {
         if (injectionPoint instanceof ArgumentInjectionPoint) {
             Argument<?> argument = ((ArgumentInjectionPoint<?, ?>) injectionPoint).getArgument();
-            return beanContext.getBeanDefinition(argument.getTypeParameters()[0]);
+            return (BeanDefinition<T>) beanContext.getBeanDefinition((Argument) argument.getTypeParameters()[0]);
         }
         throw new IllegalStateException();
     }

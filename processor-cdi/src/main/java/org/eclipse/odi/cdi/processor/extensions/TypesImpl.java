@@ -136,7 +136,7 @@ final class TypesImpl implements Types {
             Class<?> typeArgument = typeArguments[i];
             generics[i] = visitorContext.getClassElement(typeArgument).orElse(ClassElement.of(Object.class));
         }
-        classElement.withBoundGenericTypes(Arrays.asList(generics));
+        classElement = classElement.withTypeArguments(Arrays.asList(generics));
         return new ParameterizedTypeImpl(
                 classElement,
                 this,

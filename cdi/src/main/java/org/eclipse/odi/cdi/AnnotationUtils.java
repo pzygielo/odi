@@ -26,13 +26,16 @@ import io.micronaut.core.annotation.Nullable;
 import io.micronaut.inject.annotation.MutableAnnotationMetadata;
 import io.micronaut.inject.qualifiers.AnyQualifier;
 import io.micronaut.inject.qualifiers.Qualifiers;
+import jakarta.enterprise.inject.Stereotype;
 import jakarta.enterprise.inject.Default;
 import jakarta.enterprise.inject.literal.NamedLiteral;
+import jakarta.interceptor.InterceptorBinding;
 
 import java.lang.annotation.Annotation;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -54,9 +57,11 @@ public final class AnnotationUtils {
      * @return The synthesized annotations
      */
     public static Set<Annotation> synthesizeQualifierAnnotations(AnnotationMetadata annotationMetadata, ClassLoader classLoader) {
+        Set<String> stereotypes = new LinkedHashSet<>(annotationMetadata.getAnnotationNamesByStereotype(Stereotype.class.getName()));
         return annotationMetadata
                 .getAnnotationNamesByStereotype(MetaAnnotationSupport.META_ANNOTATION_QUALIFIER)
                 .stream()
+                .filter(name -> !stereotypes.contains(name))
                 .map(name -> {
                     if (name.equals(Any.NAME)) {
                         return jakarta.enterprise.inject.Any.Literal.INSTANCE;
@@ -65,6 +70,9 @@ public final class AnnotationUtils {
                         return Default.Literal.INSTANCE;
                     }
                     if (name.equals(MetaAnnotationSupport.META_ANNOTATION_NAMED)) {
+                        if (!annotationMetadata.hasDeclaredAnnotation(AnnotationUtil.NAMED)) {
+                            return null;
+                        }
                         return NamedLiteral.of(annotationMetadata.stringValue(AnnotationUtil.NAMED).get());
                     } else {
                         final Class<? extends Annotation> annotationClass = annotationMetadata.getAnnotationType(name, classLoader)
@@ -77,6 +85,100 @@ public final class AnnotationUtils {
                 })
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
+    }
+
+    /**
+     * Creates annotation instances for all CDI interceptor bindings, including interceptor bindings declared as
+     * stereotypes on another interceptor binding annotation.
+     *
+     * @param annotationMetadata The annotation metadata, never {@code null}
+     * @return The synthesized interceptor binding annotations
+     */
+    public static Set<Annotation> synthesizeInterceptorBindingAnnotations(AnnotationMetadata annotationMetadata) {
+        List<String> interceptorBindings = annotationMetadata
+                .getAnnotationNamesByStereotype(InterceptorBinding.class.getName());
+        if (interceptorBindings.isEmpty()) {
+            return Set.of();
+        }
+        Set<Annotation> resolved = new LinkedHashSet<>();
+        for (String interceptorBinding : interceptorBindings) {
+            AnnotationValue<Annotation> annotationValue = annotationMetadata.getAnnotation(interceptorBinding);
+            if (annotationValue == null) {
+                continue;
+            }
+            collectInterceptorBindingAnnotations(annotationMetadata, annotationValue, resolved, new LinkedHashSet<>());
+        }
+        return Set.copyOf(resolved);
+    }
+
+    private static void collectInterceptorBindingAnnotations(AnnotationMetadata annotationMetadata,
+                                                            AnnotationValue<?> annotationValue,
+                                                            Set<Annotation> resolved,
+                                                            Set<String> visiting) {
+        if (annotationValue == null) {
+            return;
+        }
+        String annotationName = annotationValue.getAnnotationName();
+        if (!visiting.add(annotationName)) {
+            return;
+        }
+        try {
+            if (!InterceptorBinding.class.getName().equals(annotationName)) {
+                Annotation annotation = synthesizeAnnotationValue(annotationMetadata, annotationValue);
+                if (annotation != null) {
+                    resolved.add(annotation);
+                }
+            }
+            List<AnnotationValue<?>> stereotypes = annotationValue.getStereotypes();
+            if (stereotypes == null) {
+                return;
+            }
+            for (AnnotationValue<?> stereotype : stereotypes) {
+                if (!InterceptorBinding.class.getName().equals(stereotype.getAnnotationName())
+                        && hasInterceptorBindingStereotype(stereotype, new LinkedHashSet<>())) {
+                    collectInterceptorBindingAnnotations(annotationMetadata, stereotype, resolved, visiting);
+                }
+            }
+        } finally {
+            visiting.remove(annotationName);
+        }
+    }
+
+    @Nullable
+    private static Annotation synthesizeAnnotationValue(AnnotationMetadata sourceMetadata, AnnotationValue<?> annotationValue) {
+        Class<? extends Annotation> annotationClass = sourceMetadata
+                .getAnnotationType(annotationValue.getAnnotationName())
+                .orElse(null);
+        if (annotationClass == null) {
+            return null;
+        }
+        MutableAnnotationMetadata annotationMetadata = new MutableAnnotationMetadata();
+        annotationMetadata.addDeclaredAnnotation(
+                annotationValue.getAnnotationName(),
+                annotationValue.getValues(),
+                annotationValue.getRetentionPolicy()
+        );
+        return annotationMetadata.synthesize(annotationClass);
+    }
+
+    private static boolean hasInterceptorBindingStereotype(AnnotationValue<?> annotationValue, Set<String> visited) {
+        String annotationName = annotationValue.getAnnotationName();
+        if (!visited.add(annotationName)) {
+            return false;
+        }
+        if (InterceptorBinding.class.getName().equals(annotationName)) {
+            return true;
+        }
+        List<AnnotationValue<?>> stereotypes = annotationValue.getStereotypes();
+        if (stereotypes == null) {
+            return false;
+        }
+        for (AnnotationValue<?> stereotype : stereotypes) {
+            if (hasInterceptorBindingStereotype(stereotype, visited)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

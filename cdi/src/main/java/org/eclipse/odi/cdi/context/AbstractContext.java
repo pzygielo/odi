@@ -82,6 +82,7 @@ public abstract class AbstractContext implements AlterableContext {
     @Override
     @SuppressWarnings("unchecked")
     public void destroy(Contextual<?> contextual) {
+        contextual = unwrapProxy(contextual);
         Entry entry = storage.remove(contextual);
         if (entry != null) {
             @SuppressWarnings("rawtypes")

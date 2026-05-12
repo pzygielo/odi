@@ -18,12 +18,17 @@ package org.eclipse.odi.cdi;
 import java.lang.annotation.Annotation;
 import java.util.Collections;
 import java.util.Map;
+import java.util.function.Predicate;
 
 import io.micronaut.context.ApplicationContext;
 import io.micronaut.context.ApplicationContextBuilder;
 import io.micronaut.context.env.PropertySource;
+import io.micronaut.context.env.PropertySourcesLocator;
 import io.micronaut.core.annotation.NonNull;
+import io.micronaut.core.io.scan.ClassPathResourceLoader;
 import io.micronaut.core.util.ArrayUtils;
+import io.micronaut.inject.BeanConfiguration;
+import io.micronaut.inject.QualifiedBeanType;
 import jakarta.enterprise.inject.se.SeContainer;
 import jakarta.enterprise.inject.se.SeContainerInitializer;
 import jakarta.enterprise.inject.spi.Extension;
@@ -163,6 +168,16 @@ public class OdiSeContainerInitializer extends SeContainerInitializer implements
     }
 
     @Override
+    public ApplicationContextBuilder deducePackage(boolean deducePackage) {
+        return contextBuilder.deducePackage(deducePackage);
+    }
+
+    @Override
+    public ApplicationContextBuilder deduceCloudEnvironment(boolean deduceEnvironment) {
+        return contextBuilder.deduceCloudEnvironment(deduceEnvironment);
+    }
+
+    @Override
     @NonNull
     public ApplicationContextBuilder environments(String... environments) {
         contextBuilder.environments(environments);
@@ -251,6 +266,41 @@ public class OdiSeContainerInitializer extends SeContainerInitializer implements
     @Override
     public ApplicationContextBuilder allowEmptyProviders(boolean shouldAllow) {
         return contextBuilder.allowEmptyProviders(shouldAllow);
+    }
+
+    @Override
+    public ApplicationContextBuilder configImport(boolean enabled) {
+        return contextBuilder.configImport(enabled);
+    }
+
+    @Override
+    public ApplicationContextBuilder eagerBeansEnabled(boolean enabled) {
+        return contextBuilder.eagerBeansEnabled(enabled);
+    }
+
+    @Override
+    public ApplicationContextBuilder eventsEnabled(boolean enabled) {
+        return contextBuilder.eventsEnabled(enabled);
+    }
+
+    @Override
+    public ApplicationContextBuilder beansPredicate(Predicate<QualifiedBeanType<?>> predicate) {
+        return contextBuilder.beansPredicate(predicate);
+    }
+
+    @Override
+    public ApplicationContextBuilder beanConfigurationsPredicate(Predicate<BeanConfiguration> predicate) {
+        return contextBuilder.beanConfigurationsPredicate(predicate);
+    }
+
+    @Override
+    public ApplicationContextBuilder resourceResolver(ClassPathResourceLoader resourceResolver) {
+        return contextBuilder.resourceResolver(resourceResolver);
+    }
+
+    @Override
+    public ApplicationContextBuilder propertySourcesLocator(PropertySourcesLocator propertySourcesLocator) {
+        return contextBuilder.propertySourcesLocator(propertySourcesLocator);
     }
 
 }

@@ -16,10 +16,18 @@
 package org.eclipse.odi.tck.arquillian;
 
 import io.micronaut.context.ApplicationContext;
+import io.micronaut.context.Qualifier;
 import io.micronaut.core.reflect.ClassUtils;
 import io.micronaut.core.type.Argument;
 import io.micronaut.inject.BeanDefinition;
 import io.micronaut.inject.ExecutableMethod;
+import io.micronaut.inject.qualifiers.Qualifiers;
+import jakarta.enterprise.context.spi.CreationalContext;
+import jakarta.enterprise.context.spi.Contextual;
+import jakarta.enterprise.event.Event;
+import jakarta.enterprise.inject.spi.Bean;
+import jakarta.enterprise.inject.spi.BeanContainer;
+import org.eclipse.odi.cdi.OdiBeanContainer;
 import org.jboss.arquillian.core.api.Instance;
 import org.jboss.arquillian.core.api.annotation.Inject;
 import org.jboss.arquillian.test.spi.TestEnricher;
@@ -29,7 +37,9 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Type;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * ODI test enricher.
@@ -43,24 +53,19 @@ public class OdiInjectionEnricher implements TestEnricher {
         Optional<? extends BeanDefinition<?>> beanDefinition = applicationContext.findBeanDefinition(testCase.getClass());
         if (beanDefinition.isPresent()) {
             applicationContext.inject(testCase);
-        } else {
-            // Build extensions
-            enrichUsingReflection(testCase, applicationContext);
         }
+        enrichUsingReflection(testCase, applicationContext);
     }
 
     static void enrichUsingReflection(Object testCase, ApplicationContext applicationContext) {
+        BeanContainer beanContainer = applicationContext.getBean(OdiBeanContainer.class);
         Class<?> testClass = testCase.getClass();
         while (!Object.class.equals(testClass)) {
             for (Field field : testClass.getDeclaredFields()) {
                 if (hasInjectAnnotation(field)) {
                     try {
                         field.setAccessible(true);
-                        if (field.get(testCase) != null) {
-                            continue;
-                        }
-                        // TODO qualifiers?
-                        Object value = applicationContext.getBean(field.getType());
+                        Object value = getContextualReference(field, beanContainer, applicationContext);
 
                         field.set(testCase, value);
                     } catch (IllegalAccessException e) {
@@ -70,6 +75,28 @@ public class OdiInjectionEnricher implements TestEnricher {
             }
             testClass = testClass.getSuperclass();
         }
+    }
+
+    private static Object getContextualReference(Field field,
+                                                 BeanContainer beanContainer,
+                                                 ApplicationContext applicationContext) {
+        Type fieldType = field.getGenericType();
+        if (field.getType() == Event.class || field.getType() == jakarta.enterprise.inject.Instance.class) {
+            return applicationContext.getBean(Argument.of(fieldType));
+        }
+        Set<Annotation> qualifiers = new LinkedHashSet<>();
+        for (Annotation annotation : field.getAnnotations()) {
+            if (beanContainer.isQualifier(annotation.annotationType())) {
+                qualifiers.add(annotation);
+            }
+        }
+        Set<Bean<?>> beans = beanContainer.getBeans(fieldType, qualifiers.toArray(Annotation[]::new));
+        Bean<?> bean = beanContainer.resolve(beans);
+        if (bean == null) {
+            return applicationContext.getBean(Argument.of(fieldType));
+        }
+        CreationalContext<?> creationalContext = beanContainer.createCreationalContext((Contextual<?>) bean);
+        return beanContainer.getReference(bean, fieldType, creationalContext);
     }
 
     @Override
@@ -106,8 +133,9 @@ public class OdiInjectionEnricher implements TestEnricher {
                     return new Object[params.length];
                 }
 
+                OdiBeanContainer beanContainer = applicationContext.getBean(OdiBeanContainer.class);
                 return Arrays.stream(optionalExecutableMethod.get().getArguments())
-                        .map(applicationContext::getBean)
+                        .map(argument -> resolveArgument(argument, beanContainer, applicationContext))
                         .toArray();
             } else {
                 return resolveUsingReflection(method);
@@ -115,6 +143,19 @@ public class OdiInjectionEnricher implements TestEnricher {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static Object resolveArgument(Argument<?> argument,
+                                          OdiBeanContainer beanContainer,
+                                          ApplicationContext applicationContext) {
+        if (argument.getType() == Event.class || argument.getType() == jakarta.enterprise.inject.Instance.class) {
+            return applicationContext.getBean((Argument) argument);
+        }
+        Qualifier<?> qualifier = Qualifiers.forArgument(argument);
+        Bean<?> bean = beanContainer.getBean((Argument) argument, (Qualifier) qualifier);
+        CreationalContext<?> creationalContext = beanContainer.createCreationalContext((Contextual<?>) bean);
+        return beanContainer.getReference(bean, argument.asType(), creationalContext);
     }
 
     private static boolean hasInjectAnnotation(Field field) {

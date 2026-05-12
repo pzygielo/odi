@@ -15,21 +15,25 @@
  */
 package org.eclipse.odi.cdi.processor;
 
-import io.micronaut.annotation.processing.visitor.JavaClassElement;
 import io.micronaut.annotation.processing.visitor.JavaClassElementHelper;
 import io.micronaut.core.annotation.AnnotationMetadata;
+import io.micronaut.core.annotation.AnnotationClassValue;
+import io.micronaut.core.annotation.AnnotationValue;
 import io.micronaut.core.annotation.AnnotationUtil;
 import io.micronaut.core.annotation.Internal;
+import io.micronaut.core.annotation.Order;
 import io.micronaut.core.naming.NameUtils;
 import io.micronaut.inject.annotation.AnnotationMetadataHierarchy;
 import io.micronaut.inject.ast.ClassElement;
 import io.micronaut.inject.ast.ConstructorElement;
 import io.micronaut.inject.ast.Element;
 import io.micronaut.inject.ast.FieldElement;
+import io.micronaut.inject.ast.GenericPlaceholderElement;
 import io.micronaut.inject.ast.MethodElement;
 import io.micronaut.inject.ast.ParameterElement;
 import io.micronaut.inject.ast.TypedElement;
 import io.micronaut.inject.visitor.VisitorContext;
+import jakarta.annotation.Priority;
 import jakarta.enterprise.event.Event;
 import jakarta.enterprise.event.Observes;
 import jakarta.enterprise.event.ObservesAsync;
@@ -37,11 +41,18 @@ import jakarta.enterprise.inject.Default;
 import jakarta.enterprise.inject.Disposes;
 import jakarta.enterprise.inject.Instance;
 import jakarta.enterprise.inject.Produces;
+import jakarta.enterprise.inject.Stereotype;
 import jakarta.inject.Inject;
 import jakarta.interceptor.Interceptor;
 
 import java.lang.annotation.Annotation;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.OptionalInt;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -65,6 +76,14 @@ public final class CdiUtil {
             return true;
         }
         return false;
+    }
+
+    public static boolean isBeanClass(ClassElement classElement) {
+        if (classElement.getDefaultConstructor().isPresent()) {
+            return true;
+        }
+        return classElement.getAccessibleConstructors().stream()
+                .anyMatch(constructor -> constructor.hasDeclaredAnnotation(Inject.class));
     }
 
     public static boolean validateNoInterceptor(VisitorContext context,
@@ -133,22 +152,259 @@ public final class CdiUtil {
         return annotations.stream().map(n -> "@" + NameUtils.getSimpleName(n)).collect(Collectors.joining(" and "));
     }
 
-    private static boolean needsDefaultQualifier(AnnotationMetadata declaredMetadata) {
-        return !declaredMetadata.hasStereotype(AnnotationUtil.QUALIFIER);
+    public static void visitPriority(VisitorContext context, ClassElement element) {
+        if (element.hasDeclaredAnnotation(Order.class)) {
+            return;
+        }
+        OptionalInt priority = resolvePriority(context, element);
+        if (priority.isPresent()) {
+            element.annotate(Order.class, builder -> builder.value(-priority.getAsInt()));
+        }
+    }
+
+    private static OptionalInt resolvePriority(VisitorContext context, ClassElement element) {
+        OptionalInt directPriority = declaredIntValue(element.getAnnotationMetadata(), Priority.class);
+        if (directPriority.isPresent()) {
+            return directPriority;
+        }
+        OptionalInt metadataPriority = resolveStereotypePriority(element.getAnnotationMetadata(), new HashSet<>());
+        if (metadataPriority.isPresent()) {
+            return metadataPriority;
+        }
+        return resolveStereotypePriority(
+                context,
+                element.getAnnotationNames(),
+                new HashSet<>()
+        );
+    }
+
+    private static OptionalInt resolveStereotypePriority(AnnotationMetadata annotationMetadata, Set<String> visited) {
+        for (String annotationName : annotationMetadata.getAnnotationNames()) {
+            AnnotationValue<Annotation> annotation = annotationMetadata.getAnnotation(annotationName);
+            if (annotation == null || annotation.getStereotypes() == null) {
+                continue;
+            }
+            OptionalInt priority = resolveStereotypePriority(annotation.getStereotypes(), visited);
+            if (priority.isPresent()) {
+                return priority;
+            }
+        }
+        return OptionalInt.empty();
+    }
+
+    private static OptionalInt resolveStereotypePriority(Iterable<AnnotationValue<?>> stereotypes, Set<String> visited) {
+        for (AnnotationValue<?> stereotype : stereotypes) {
+            String annotationName = stereotype.getAnnotationName();
+            if (!visited.add(annotationName)) {
+                continue;
+            }
+            if (annotationName.equals(Priority.class.getName())) {
+                OptionalInt priority = stereotype.intValue();
+                if (priority.isPresent()) {
+                    return priority;
+                }
+            }
+            if (annotationName.equals(Order.class.getName())) {
+                int order = stereotype.intValue().orElse(0);
+                if (order != 0) {
+                    return OptionalInt.of(-order);
+                }
+            }
+            if (stereotype.getStereotypes() != null) {
+                OptionalInt priority = resolveStereotypePriority(stereotype.getStereotypes(), visited);
+                if (priority.isPresent()) {
+                    return priority;
+                }
+            }
+        }
+        return OptionalInt.empty();
+    }
+
+    private static OptionalInt resolveStereotypePriority(VisitorContext context, Collection<String> annotationNames, Set<String> visited) {
+        for (String annotationName : annotationNames) {
+            if (!visited.add(annotationName)) {
+                continue;
+            }
+            OptionalInt priority = context.getClassElement(annotationName)
+                    .flatMap(annotation -> {
+                        if (!annotation.hasAnnotation(Stereotype.class) && !annotation.hasStereotype(Stereotype.class)) {
+                            return java.util.Optional.empty();
+                        }
+                        OptionalInt directPriority = declaredIntValue(annotation.getAnnotationMetadata(), Priority.class);
+                        if (directPriority.isPresent()) {
+                            return java.util.Optional.of(directPriority);
+                        }
+                        int order = declaredIntValue(annotation.getAnnotationMetadata(), Order.class).orElse(0);
+                        if (order != 0) {
+                            return java.util.Optional.of(OptionalInt.of(-order));
+                        }
+                        OptionalInt nestedPriority = resolveStereotypePriority(
+                                context,
+                                annotation.getAnnotationNames(),
+                                visited
+                        );
+                        return nestedPriority.isPresent()
+                                ? java.util.Optional.of(nestedPriority)
+                                : java.util.Optional.empty();
+                    })
+                    .orElse(OptionalInt.empty());
+            if (priority.isPresent()) {
+                return priority;
+            }
+        }
+        return OptionalInt.empty();
+    }
+
+    private static OptionalInt declaredIntValue(AnnotationMetadata annotationMetadata, Class<? extends Annotation> annotationType) {
+        AnnotationValue<?> annotation = annotationMetadata.getDeclaredAnnotation(annotationType);
+        if (annotation != null) {
+            OptionalInt value = annotation.intValue();
+            if (value.isPresent()) {
+                return value;
+            }
+        }
+        return annotationMetadata.getDeclaredMetadata().intValue(annotationType);
+    }
+
+    private static boolean needsDefaultQualifier(AnnotationMetadata annotationMetadata, boolean declaringElementOnly) {
+        AnnotationMetadata declaredMetadata;
+        if (annotationMetadata instanceof AnnotationMetadataHierarchy) {
+            declaredMetadata = ((AnnotationMetadataHierarchy) annotationMetadata).getRootMetadata();
+        } else {
+            declaredMetadata = annotationMetadata.getDeclaredMetadata();
+        }
+        if (declaringElementOnly) {
+            return !declaredMetadata.hasDeclaredStereotype(AnnotationUtil.QUALIFIER)
+                    && !declaredMetadata.hasStereotype(AnnotationUtil.QUALIFIER);
+        }
+        return !declaredMetadata.hasDeclaredStereotype(AnnotationUtil.QUALIFIER)
+                && !annotationMetadata.hasStereotype(AnnotationUtil.QUALIFIER);
+    }
+
+    private static boolean needsDefaultInjectPointQualifier(AnnotationMetadata annotationMetadata) {
+        AnnotationMetadata declaredMetadata = annotationMetadata.getDeclaredMetadata();
+        return !declaredMetadata.hasDeclaredStereotype(AnnotationUtil.QUALIFIER);
     }
 
     public static void visitBeanDefinition(VisitorContext context, Element beanDefinition) {
-        AnnotationMetadata annotationMetadata = beanDefinition.getAnnotationMetadata();
-        if (annotationMetadata instanceof AnnotationMetadataHierarchy) {
-            annotationMetadata = annotationMetadata.getDeclaredMetadata();
-        }
-        if (needsDefaultQualifier(annotationMetadata)) {
+        boolean declaringElementOnly = beanDefinition instanceof MethodElement || beanDefinition instanceof FieldElement;
+        if (needsDefaultQualifier(beanDefinition.getAnnotationMetadata(), declaringElementOnly)) {
             beanDefinition.annotate(Default.class);
+        }
+        visitBeanTypes(beanDefinition);
+    }
+
+    private static void visitBeanTypes(Element beanDefinition) {
+        ClassElement beanType = resolveBeanType(beanDefinition);
+        if (beanType == null) {
+            return;
+        }
+        Set<ClassElement> beanTypes = new LinkedHashSet<>();
+        collectBeanTypes(beanType, beanTypes);
+        if (beanTypes.stream().noneMatch(CdiUtil::hasTypeArguments)) {
+            return;
+        }
+        for (ClassElement type : beanTypes) {
+            BeanTypeArguments typeArguments = toTypeArguments(type);
+            beanDefinition.annotate(AnnotationValue.builder(org.eclipse.odi.cdi.processor.AnnotationUtil.ANN_BEAN_TYPE)
+                    .member(AnnotationMetadata.VALUE_MEMBER, new AnnotationClassValue<>(type.getName()))
+                    .member("arguments", typeArguments.values.toArray(new AnnotationClassValue<?>[0]))
+                    .member("argumentCounts", typeArguments.counts.stream().mapToInt(Integer::intValue).toArray())
+                    .build());
         }
     }
 
+    private static ClassElement resolveBeanType(Element beanDefinition) {
+        if (beanDefinition instanceof MethodElement) {
+            return ((MethodElement) beanDefinition).getGenericReturnType();
+        }
+        if (beanDefinition instanceof FieldElement) {
+            return ((FieldElement) beanDefinition).getGenericField();
+        }
+        if (beanDefinition instanceof ClassElement) {
+            return (ClassElement) beanDefinition;
+        }
+        return null;
+    }
+
+    private static void collectBeanTypes(ClassElement beanType, Set<ClassElement> beanTypes) {
+        if (beanType == null || beanType.getName().equals(Object.class.getName())) {
+            return;
+        }
+        beanTypes.add(beanType);
+        if (beanType.isArray()) {
+            return;
+        }
+        for (ClassElement interfaceType : beanType.getInterfaces()) {
+            collectBeanTypes(interfaceType, beanTypes);
+        }
+        beanType.getSuperType().ifPresent(superType -> collectBeanTypes(superType, beanTypes));
+    }
+
+    private static boolean hasTypeArguments(ClassElement beanType) {
+        return !resolveTypeArguments(beanType).isEmpty();
+    }
+
+    private static BeanTypeArguments toTypeArguments(ClassElement beanType) {
+        BeanTypeArguments metadata = new BeanTypeArguments();
+        collectTypeArguments(resolveTypeArguments(beanType), metadata);
+        return metadata;
+    }
+
+    private static void collectTypeArguments(List<ClassElement> typeArguments, BeanTypeArguments metadata) {
+        for (ClassElement typeArgument : typeArguments) {
+            List<ClassElement> nestedTypeArguments = resolveTypeArguments(typeArgument);
+            metadata.values.add(new AnnotationClassValue<>(typeArgument.getName()));
+            metadata.counts.add(nestedTypeArguments.size());
+            collectTypeArguments(nestedTypeArguments, metadata);
+        }
+    }
+
+    private static List<ClassElement> resolveTypeArguments(ClassElement beanType) {
+        if (JavaClassElementHelper.isRawClassElement(beanType)) {
+            return List.of();
+        }
+        List<ClassElement> typeArguments = new ArrayList<>(beanType.getBoundGenericTypes());
+        if (typeArguments.isEmpty() && !beanType.getTypeArguments().isEmpty()) {
+            typeArguments.addAll(beanType.getTypeArguments().values());
+        }
+        if (typeArguments.isEmpty() && !beanType.getDeclaredGenericPlaceholders().isEmpty()) {
+            for (GenericPlaceholderElement placeholder : beanType.getDeclaredGenericPlaceholders()) {
+                typeArguments.add(placeholder.getBounds().get(0));
+            }
+        }
+        if (typeArguments.isEmpty()) {
+            return List.of();
+        }
+        return typeArguments;
+    }
+
+    private static final class BeanTypeArguments {
+        private final List<AnnotationClassValue<?>> values = new ArrayList<>();
+        private final List<Integer> counts = new ArrayList<>();
+    }
+
+    public static boolean hasDependentScope(Element beanDefinition, VisitorContext context) {
+        for (String annotationName : beanDefinition.getDeclaredAnnotationNames()) {
+            if (annotationName.equals(jakarta.enterprise.context.Dependent.class.getName())) {
+                continue;
+            }
+            boolean nonDependentScope = context.getClassElement(annotationName)
+                    .map(annotation -> annotation.hasAnnotation(jakarta.enterprise.context.NormalScope.class.getName())
+                            || annotation.hasAnnotation(jakarta.inject.Scope.class.getName())
+                            || annotation.hasStereotype(jakarta.enterprise.context.NormalScope.class.getName())
+                            || annotation.hasStereotype(AnnotationUtil.SCOPE)
+                            || annotation.hasStereotype(jakarta.inject.Scope.class.getName()))
+                    .orElse(false);
+            if (nonDependentScope) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     public static boolean visitInjectPoint(VisitorContext context, TypedElement injectPoint) {
-        if (needsDefaultQualifier(injectPoint)) {
+        if (needsDefaultInjectPointQualifier(injectPoint.getAnnotationMetadata())) {
             injectPoint.annotate(Default.class);
         }
         return CdiUtil.validateInjectedType(context, injectPoint.getGenericType(), injectPoint);
@@ -167,9 +423,6 @@ public final class CdiUtil {
     }
 
     private static boolean isNoGenericType(ClassElement classElement) {
-        if (classElement instanceof JavaClassElement) {
-            return JavaClassElementHelper.getGenericTypeInfo((JavaClassElement) classElement).isEmpty();
-        }
-        return false;
+        return classElement.getTypeArguments().isEmpty();
     }
 }

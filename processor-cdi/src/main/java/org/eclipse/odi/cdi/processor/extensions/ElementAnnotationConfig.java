@@ -17,15 +17,12 @@ package org.eclipse.odi.cdi.processor.extensions;
 
 import org.eclipse.odi.cdi.annotation.reflect.AnnotationReflection;
 import io.micronaut.core.annotation.AnnotationValue;
-import io.micronaut.inject.annotation.AbstractAnnotationMetadataBuilder;
 import io.micronaut.inject.ast.Element;
-import io.micronaut.inject.processing.JavaModelUtils;
 import io.micronaut.inject.visitor.VisitorContext;
 import jakarta.enterprise.inject.build.compatible.spi.DeclarationConfig;
 import jakarta.enterprise.lang.model.AnnotationInfo;
 import jakarta.enterprise.lang.model.AnnotationTarget;
 
-import javax.lang.model.element.TypeElement;
 import java.lang.annotation.Annotation;
 import java.util.Collection;
 import java.util.Collections;
@@ -112,7 +109,7 @@ interface ElementAnnotationConfig extends DeclarationConfig, AnnotationTarget {
         if (annotation != null) {
             if (annotation instanceof AnnotationInfoImpl) {
                 final AnnotationValue<?> av = ((AnnotationInfoImpl) annotation).getAnnotationValue();
-                AnnotationConfigSupport.annotate(getElement(), av);
+                AnnotationConfigSupport.annotate(getElement(), av, getVisitorContext());
             }
         }
         return this;
@@ -122,7 +119,7 @@ interface ElementAnnotationConfig extends DeclarationConfig, AnnotationTarget {
     default DeclarationConfig addAnnotation(Annotation annotation) {
         if (annotation != null) {
             final AnnotationValue<Annotation> v = AnnotationReflection.toAnnotationValue(annotation);
-            AnnotationConfigSupport.annotate(getElement(), v);
+            AnnotationConfigSupport.annotate(getElement(), v, getVisitorContext());
         }
         return this;
     }
@@ -133,18 +130,6 @@ interface ElementAnnotationConfig extends DeclarationConfig, AnnotationTarget {
         element.removeAnnotationIf(annotationValue ->
                 predicate.test(new AnnotationInfoImpl(annotationValue))
         );
-        final Object nativeType = element.getNativeType();
-        // workaround to Micronaut bug, remove once fixed
-        if (nativeType instanceof javax.lang.model.element.Element) {
-            javax.lang.model.element.Element javaElement = (javax.lang.model.element.Element) nativeType;
-            while (javaElement != null && !(JavaModelUtils.isClassOrInterface(javaElement) || JavaModelUtils.isRecord(javaElement) || JavaModelUtils.isEnum(javaElement))) {
-                javaElement = javaElement.getEnclosingElement();
-            }
-            if (javaElement instanceof TypeElement) {
-                final String declaring = ((TypeElement) javaElement).getQualifiedName().toString();
-                AbstractAnnotationMetadataBuilder.addMutatedMetadata(declaring, nativeType, element.getAnnotationMetadata());
-            }
-        }
         return this;
     }
 

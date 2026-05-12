@@ -272,9 +272,26 @@ final class OdiBeanContainerImpl implements OdiBeanContainer {
     @Override
     public Set<Bean<?>> getBeans(Type beanType, Annotation... qualifiers) {
         boolean filterBeanTypes = shouldFilterBeanTypes(beanType);
-        return getBeans(Argument.of(beanType), odiAnnotations.resolveQualifier(qualifiers)).stream()
+        Collection<OdiBean<?>> candidates = getBeansForRequiredType(beanType, odiAnnotations.resolveQualifier(qualifiers), filterBeanTypes);
+        return candidates.stream()
                 .filter(bean -> !filterBeanTypes || matchesBeanType(beanType, bean.getTypes()))
                 .collect(Collectors.toUnmodifiableSet());
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private Collection<OdiBean<?>> getBeansForRequiredType(Type beanType,
+                                                           io.micronaut.context.Qualifier<?> qualifier,
+                                                           boolean filterBeanTypes) {
+        if (!filterBeanTypes) {
+            return (Collection) getBeans((Argument) Argument.of(beanType), (io.micronaut.context.Qualifier) qualifier);
+        }
+        io.micronaut.context.Qualifier<Object> objectQualifier = (io.micronaut.context.Qualifier<Object>) qualifier;
+        if (objectQualifier == null) {
+            objectQualifier = (io.micronaut.context.Qualifier<Object>) DefaultQualifier.instance();
+        }
+        return objectQualifier.filterQualified(Object.class, applicationContext.getAllBeanDefinitions()).stream()
+                .map(bd -> new OdiBeanImpl<>(applicationContext, bd))
+                .collect(Collectors.toList());
     }
 
     @Override
@@ -533,16 +550,37 @@ final class OdiBeanContainerImpl implements OdiBeanContainer {
     }
 
     private static boolean shouldFilterBeanTypes(Type requiredType) {
-        if (!(requiredType instanceof ParameterizedType)) {
+        Class<?> requiredRawType = rawType(requiredType);
+        if (requiredRawType == Event.class || requiredRawType == Instance.class) {
             return false;
         }
-        Class<?> requiredRawType = rawType(requiredType);
-        return requiredRawType != Event.class && requiredRawType != Instance.class;
+        if (requiredType instanceof Class<?>) {
+            return ((Class<?>) requiredType).getTypeParameters().length > 0;
+        }
+        return requiredType instanceof ParameterizedType;
     }
 
     private static boolean isBeanTypeAssignable(Type requiredType, Type beanType) {
         if (isSameType(requiredType, beanType)) {
             return true;
+        }
+        if (requiredType instanceof Class<?>) {
+            Class<?> requiredClass = (Class<?>) requiredType;
+            if (beanType instanceof Class<?>) {
+                return requiredClass.equals(beanType);
+            }
+            if (beanType instanceof ParameterizedType) {
+                ParameterizedType beanParameterized = (ParameterizedType) beanType;
+                if (!requiredClass.equals(rawType(beanParameterized))) {
+                    return false;
+                }
+                for (Type beanArgument : beanParameterized.getActualTypeArguments()) {
+                    if (!isParameterizedBeanTypeAssignableToRaw(beanArgument)) {
+                        return false;
+                    }
+                }
+                return true;
+            }
         }
         if (requiredType instanceof ParameterizedType) {
             ParameterizedType requiredParameterized = (ParameterizedType) requiredType;
@@ -582,6 +620,13 @@ final class OdiBeanContainerImpl implements OdiBeanContainer {
         return false;
     }
 
+    private static boolean isParameterizedBeanTypeAssignableToRaw(Type beanArgument) {
+        if (beanArgument == Object.class) {
+            return true;
+        }
+        return isTypeVariable(beanArgument) && hasOnlyObjectUpperBound(beanArgument);
+    }
+
     private static boolean isRawBeanTypeAssignableTo(Type requiredArgument) {
         if (requiredArgument == Object.class) {
             return true;
@@ -601,34 +646,13 @@ final class OdiBeanContainerImpl implements OdiBeanContainer {
             return true;
         }
         if (requiredArgument instanceof WildcardType) {
-            WildcardType wildcard = (WildcardType) requiredArgument;
-            for (Type upperBound : wildcard.getUpperBounds()) {
-                if (!isTypeAssignable(beanArgument, upperBound)) {
-                    return false;
-                }
-            }
-            for (Type lowerBound : wildcard.getLowerBounds()) {
-                if (!isTypeAssignable(lowerBound, beanArgument)) {
-                    return false;
-                }
-            }
-            return true;
-        }
-        if (isTypeVariable(requiredArgument)) {
-            for (Type bound : typeVariableBounds(requiredArgument)) {
-                if (!isTypeAssignable(beanArgument, bound)) {
-                    return false;
-                }
-            }
-            return true;
+            return isBeanArgumentAssignableToWildcard((WildcardType) requiredArgument, beanArgument);
         }
         if (isTypeVariable(beanArgument)) {
-            for (Type bound : typeVariableBounds(beanArgument)) {
-                if (!isTypeAssignable(requiredArgument, bound)) {
-                    return false;
-                }
-            }
-            return true;
+            return satisfiesBounds(requiredArgument, typeVariableBounds(beanArgument));
+        }
+        if (isTypeVariable(requiredArgument)) {
+            return satisfiesBounds(beanArgument, typeVariableBounds(requiredArgument));
         }
         if (requiredArgument instanceof ParameterizedType && beanArgument instanceof ParameterizedType) {
             return isBeanTypeAssignable(requiredArgument, beanArgument);
@@ -636,13 +660,71 @@ final class OdiBeanContainerImpl implements OdiBeanContainer {
         return false;
     }
 
+    private static boolean isBeanArgumentAssignableToWildcard(WildcardType wildcard, Type beanArgument) {
+        for (Type upperBound : wildcard.getUpperBounds()) {
+            if (upperBound == Object.class) {
+                continue;
+            }
+            if (isTypeVariable(beanArgument)) {
+                if (!typeVariableBoundsOverlap(upperBound, beanArgument)) {
+                    return false;
+                }
+            } else if (!isTypeAssignable(beanArgument, upperBound)) {
+                return false;
+            }
+        }
+        for (Type lowerBound : wildcard.getLowerBounds()) {
+            if (isTypeVariable(beanArgument)) {
+                if (!satisfiesBounds(lowerBound, typeVariableBounds(beanArgument))) {
+                    return false;
+                }
+            } else if (!isTypeAssignable(lowerBound, beanArgument)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private static boolean isTypeAssignable(Type candidate, Type requiredBound) {
         if (isSameType(candidate, requiredBound) || requiredBound == Object.class) {
             return true;
         }
+        if (isTypeVariable(candidate)) {
+            for (Type candidateBound : typeVariableBounds(candidate)) {
+                if (isTypeAssignable(candidateBound, requiredBound)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if (isTypeVariable(requiredBound)) {
+            return satisfiesBounds(candidate, typeVariableBounds(requiredBound));
+        }
+        if (candidate instanceof ParameterizedType && requiredBound instanceof ParameterizedType) {
+            return isBeanTypeAssignable(requiredBound, candidate);
+        }
         Class<?> candidateClass = rawType(candidate);
         Class<?> requiredClass = rawType(requiredBound);
         return candidateClass != null && requiredClass != null && requiredClass.isAssignableFrom(candidateClass);
+    }
+
+    private static boolean satisfiesBounds(Type type, Type[] bounds) {
+        for (Type bound : bounds) {
+            if (!isTypeAssignable(type, bound)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean typeVariableBoundsOverlap(Type requiredBound, Type variable) {
+        Type[] variableBounds = typeVariableBounds(variable);
+        for (Type variableBound : variableBounds) {
+            if (isTypeAssignable(variableBound, requiredBound)) {
+                return true;
+            }
+        }
+        return satisfiesBounds(requiredBound, variableBounds);
     }
 
     private static boolean hasOnlyObjectUpperBound(Type variable) {

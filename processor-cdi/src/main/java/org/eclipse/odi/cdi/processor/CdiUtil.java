@@ -369,6 +369,7 @@ public final class CdiUtil {
         for (ClassElement typeArgument : typeArguments) {
             boolean typeVariable = typeArgument instanceof GenericPlaceholderElement;
             ClassElement storedTypeArgument = typeArgument;
+            List<? extends ClassElement> typeVariableBounds = List.of();
             if (typeVariable) {
                 GenericPlaceholderElement placeholder = (GenericPlaceholderElement) typeArgument;
                 ClassElement resolvedTypeArgument = placeholder.getResolved().orElse(null);
@@ -376,13 +377,15 @@ public final class CdiUtil {
                     storedTypeArgument = resolvedTypeArgument;
                     typeVariable = false;
                 } else {
-                    List<? extends ClassElement> bounds = placeholder.getBounds();
-                    if (!bounds.isEmpty()) {
-                        storedTypeArgument = bounds.get(0);
+                    typeVariableBounds = placeholder.getBounds();
+                    if (!typeVariableBounds.isEmpty()) {
+                        storedTypeArgument = typeVariableBounds.get(0);
                     }
                 }
             }
-            List<ClassElement> nestedTypeArguments = resolveTypeArguments(storedTypeArgument, collapseDeclaredTypeVariables);
+            List<ClassElement> nestedTypeArguments = typeVariable
+                    ? new ArrayList<>(typeVariableBounds)
+                    : resolveTypeArguments(storedTypeArgument, collapseDeclaredTypeVariables);
             metadata.values.add(new AnnotationClassValue<>(storedTypeArgument.getName()));
             metadata.counts.add(nestedTypeArguments.size());
             metadata.typeVariables.add(typeVariable);

@@ -418,6 +418,16 @@ public class OdiBeanImpl<T> implements OdiBean<T>, Prioritized {
             boolean typeVariable = index < typeVariables.length && typeVariables[index];
             String typeVariableName = index < typeVariableNames.length ? typeVariableNames[index] : type.getSimpleName();
             index++;
+            if (typeVariable) {
+                if (childCount == 0) {
+                    return new OdiTypeVariable(typeVariableName, type);
+                }
+                Type[] bounds = new Type[childCount];
+                for (int i = 0; i < childCount; i++) {
+                    bounds[i] = read();
+                }
+                return new OdiTypeVariable(typeVariableName, bounds);
+            }
             Type resolvedType;
             if (childCount == 0) {
                 resolvedType = type;
@@ -428,7 +438,7 @@ public class OdiBeanImpl<T> implements OdiBean<T>, Prioritized {
                 }
                 resolvedType = new OdiParameterizedType(type, children);
             }
-            return typeVariable ? new OdiTypeVariable(typeVariableName, resolvedType) : resolvedType;
+            return resolvedType;
         }
     }
 
@@ -491,8 +501,12 @@ public class OdiBeanImpl<T> implements OdiBean<T>, Prioritized {
         private final GenericDeclaration declaration;
 
         private OdiTypeVariable(String name, Type bound) {
+            this(name, new Type[]{bound});
+        }
+
+        private OdiTypeVariable(String name, Type[] bounds) {
             this.name = name;
-            this.bounds = new Type[]{bound};
+            this.bounds = bounds.length == 0 ? new Type[]{Object.class} : bounds.clone();
             this.declaration = new OdiGenericDeclaration(name);
         }
 
@@ -675,9 +689,23 @@ public class OdiBeanImpl<T> implements OdiBean<T>, Prioritized {
 
     @Override
     public int hashCode() {
-        Argument<?> argument = asArgument();
-        final io.micronaut.context.Qualifier<T> qualifier = definition.getDeclaredQualifier();
-        return Objects.hash(argument, qualifier);
+        return Objects.hash(identityKey(), definition.getDeclaredQualifier());
+    }
+
+    private Object identityKey() {
+        if (usesDefinitionClassIdentity()) {
+            return definition.getClass();
+        }
+        return asArgument();
+    }
+
+    private boolean usesDefinitionClassIdentity() {
+        if (definition.isProxy() || definition instanceof AdvisedBeanType) {
+            return false;
+        }
+        return definition.getDeclaringType()
+                .filter(declaringType -> !declaringType.equals(definition.getBeanType()))
+                .isPresent();
     }
 
     private Argument<?> asArgument() {
@@ -698,8 +726,7 @@ public class OdiBeanImpl<T> implements OdiBean<T>, Prioritized {
             return false;
         }
         OdiBeanImpl<?> odiBean = (OdiBeanImpl<?>) o;
-        Argument<?> argument = asArgument();
-        return Objects.equals(argument, ((OdiBeanImpl<?>) o).asArgument())
+        return Objects.equals(identityKey(), odiBean.identityKey())
                 && Objects.equals(definition.getDeclaredQualifier(), odiBean.definition.getDeclaredQualifier());
     }
 

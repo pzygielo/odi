@@ -30,6 +30,8 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.Member;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Type;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Set;
 
@@ -40,11 +42,20 @@ final class OdiInjectionPoint implements InjectionPoint {
     private final Argument<?> argument;
     private final AnnotationMetadata annotationMetadata;
     private final io.micronaut.inject.InjectionPoint<?> injectionPoint;
+    private final Set<Annotation> qualifiers;
 
     OdiInjectionPoint(ClassLoader classLoader,
                       OdiBean<?> bean,
                       io.micronaut.inject.InjectionPoint<?> injectionPoint,
                       Argument<?> argument) {
+        this(classLoader, bean, injectionPoint, argument, null);
+    }
+
+    OdiInjectionPoint(ClassLoader classLoader,
+                      OdiBean<?> bean,
+                      io.micronaut.inject.InjectionPoint<?> injectionPoint,
+                      Argument<?> argument,
+                      Set<Annotation> qualifiers) {
         this.classLoader = classLoader;
         this.bean = Objects.requireNonNull(bean);
         Objects.requireNonNull(injectionPoint);
@@ -54,6 +65,7 @@ final class OdiInjectionPoint implements InjectionPoint {
                 argument.getAnnotationMetadata()
         );
         this.injectionPoint = injectionPoint;
+        this.qualifiers = qualifiers == null ? null : Collections.unmodifiableSet(new LinkedHashSet<>(qualifiers));
     }
 
     @Override
@@ -63,6 +75,9 @@ final class OdiInjectionPoint implements InjectionPoint {
 
     @Override
     public Set<Annotation> getQualifiers() {
+        if (qualifiers != null) {
+            return qualifiers;
+        }
         return AnnotationUtils.synthesizeQualifierAnnotations(annotationMetadata, classLoader);
     }
 
@@ -96,5 +111,9 @@ final class OdiInjectionPoint implements InjectionPoint {
     @Override
     public boolean isTransient() {
         return Modifier.isTransient(getMember().getModifiers());
+    }
+
+    OdiInjectionPoint withArgument(Argument<?> argument, Set<Annotation> qualifiers) {
+        return new OdiInjectionPoint(classLoader, bean, injectionPoint, argument, qualifiers);
     }
 }

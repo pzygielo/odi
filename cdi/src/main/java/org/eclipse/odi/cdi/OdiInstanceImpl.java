@@ -22,6 +22,7 @@ import io.micronaut.core.annotation.NonNull;
 import io.micronaut.core.annotation.Nullable;
 import io.micronaut.core.type.Argument;
 import io.micronaut.inject.qualifiers.Qualifiers;
+import jakarta.enterprise.context.Dependent;
 import jakarta.enterprise.context.spi.Context;
 import jakarta.enterprise.context.spi.CreationalContext;
 import jakarta.enterprise.inject.AmbiguousResolutionException;
@@ -38,8 +39,10 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -92,6 +95,13 @@ final class OdiInstanceImpl<T> implements OdiInstance<T> {
     @Override
     @NonNull
     public <U extends T> Instance<U> select(@NonNull Argument<U> argument, @Nullable Qualifier<U> qualifier) {
+        return select(argument, qualifier, null);
+    }
+
+    @NonNull
+    private <U extends T> Instance<U> select(@NonNull Argument<U> argument,
+                                             @Nullable Qualifier<U> qualifier,
+                                             @Nullable Annotation[] qualifierAnnotations) {
         if (InjectionPoint.class.equals(argument.getType()) && injectionPoint != null) {
             //noinspection unchecked
             return new ResolvedInstanceImpl<>((U) injectionPoint);
@@ -100,7 +110,7 @@ final class OdiInstanceImpl<T> implements OdiInstance<T> {
                     beanContainer,
                     context,
                     argument,
-                    null,
+                    selectInjectionPoint(argument, qualifierAnnotations),
                     withQualifier(qualifier),
                     created
             );
@@ -113,7 +123,7 @@ final class OdiInstanceImpl<T> implements OdiInstance<T> {
                 beanContainer,
                 context,
                 beanType,
-                null,
+                selectInjectionPoint(beanType, qualifiers),
                 withAnnotations(qualifiers),
                 created
         );
@@ -121,13 +131,13 @@ final class OdiInstanceImpl<T> implements OdiInstance<T> {
 
     @Override
     public <U extends T> Instance<U> select(Class<U> subtype, Annotation... qualifiers) {
-        return select(Argument.of(subtype), withAnnotations(qualifiers));
+        return select(Argument.of(subtype), withAnnotations(qualifiers), qualifiers);
     }
 
     @SuppressWarnings({"unchecked"})
     @Override
     public <U extends T> Instance<U> select(TypeLiteral<U> subtype, Annotation... qualifiers) {
-        return select((Argument<U>) Argument.of(subtype.getType()), withAnnotations(qualifiers));
+        return select((Argument<U>) Argument.of(subtype.getType()), withAnnotations(qualifiers), qualifiers);
     }
 
     @Override
@@ -200,7 +210,7 @@ final class OdiInstanceImpl<T> implements OdiInstance<T> {
                 if (creationalContext == null) {
                     creationalContext = beanContainer.createCreationalContext(odiBean);
                 }
-                return context.get(odiBean, creationalContext);
+                return create(odiBean, creationalContext);
             }
 
             @Override
@@ -259,11 +269,42 @@ final class OdiInstanceImpl<T> implements OdiInstance<T> {
 
     @Override
     public T get() {
-        Bean<T> resolvedBean = getBean();
+        OdiBean<T> resolvedBean = getBean();
         CreationalContext<T> creationalContext = beanContainer.createCreationalContext(resolvedBean);
-        T instance = context.get(resolvedBean, creationalContext);
+        T instance = create(resolvedBean, creationalContext);
         created.put(instance, creationalContext);
         return instance;
+    }
+
+    private T create(OdiBean<T> resolvedBean, CreationalContext<T> creationalContext) {
+        if (injectionPoint == null || resolvedBean.getScope() != Dependent.class) {
+            return context.get(resolvedBean, creationalContext);
+        }
+        return OdiCurrentInjectionPoint.call(
+                resolvedBean,
+                injectionPoint,
+                () -> context.get(resolvedBean, creationalContext)
+        );
+    }
+
+    @Nullable
+    private InjectionPoint selectInjectionPoint(Argument<?> selectedBeanType, @Nullable Annotation[] qualifierAnnotations) {
+        if (!(injectionPoint instanceof OdiInjectionPoint)) {
+            return injectionPoint;
+        }
+        OdiInjectionPoint odiInjectionPoint = (OdiInjectionPoint) injectionPoint;
+        Set<Annotation> selectedQualifiers = qualifierAnnotations == null
+                ? null
+                : mergeQualifiers(injectionPoint.getQualifiers(), qualifierAnnotations);
+        return odiInjectionPoint.withArgument(selectedBeanType, selectedQualifiers);
+    }
+
+    private static Set<Annotation> mergeQualifiers(Set<Annotation> existingQualifiers, Annotation[] selectedQualifiers) {
+        Set<Annotation> qualifiers = new LinkedHashSet<>(existingQualifiers);
+        for (Annotation selectedQualifier : selectedQualifiers) {
+            qualifiers.add(selectedQualifier);
+        }
+        return qualifiers;
     }
 
     @Override

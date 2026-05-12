@@ -15,18 +15,15 @@
  */
 package org.eclipse.odi.cdi;
 
-import io.micronaut.context.AbstractBeanResolutionContext;
 import io.micronaut.context.BeanResolutionContext;
 import io.micronaut.context.annotation.Any;
 import io.micronaut.context.annotation.Factory;
-import io.micronaut.core.util.CollectionUtils;
+import io.micronaut.core.annotation.Nullable;
 import io.micronaut.inject.ArgumentInjectionPoint;
 import io.micronaut.inject.InjectionPoint;
 import jakarta.enterprise.context.Dependent;
-import jakarta.enterprise.inject.UnsatisfiedResolutionException;
 
 import java.util.ArrayList;
-import java.util.Iterator;
 
 /**
  * Creates instances of {@link jakarta.enterprise.inject.spi.InjectionPoint}.
@@ -46,11 +43,16 @@ public class OdiInjectPointFactory {
      */
     @Any
     @Dependent
+    @Nullable
     public <T> jakarta.enterprise.inject.spi.InjectionPoint build(BeanResolutionContext resolutionContext,
                                                                   OdiBeanContainer beanContainer) {
+        jakarta.enterprise.inject.spi.InjectionPoint currentInjectionPoint = OdiCurrentInjectionPoint.current(resolutionContext);
+        if (currentInjectionPoint != null) {
+            return currentInjectionPoint;
+        }
         ArgumentInjectionPoint<T, ?> injectionPoint = (ArgumentInjectionPoint<T, ?>) provideInjectionPoint(resolutionContext);
         if (injectionPoint == null) {
-            throw new UnsatisfiedResolutionException("Unable to resolve injection point for path: " + resolutionContext.getPath());
+            return null;
         }
         OdiBean<T> bean = beanContainer.getBean(injectionPoint.getDeclaringBean());
 
@@ -59,29 +61,21 @@ public class OdiInjectPointFactory {
 
     public static <T> InjectionPoint<T> provideInjectionPoint(BeanResolutionContext resolutionContext) {
         ArrayList<BeanResolutionContext.Segment<?, ?>> paths = new ArrayList<>(resolutionContext.getPath());
-        if (!paths.isEmpty()) {
-            BeanResolutionContext.Segment<?, ?> removed = paths.remove(0);
-            if (removed instanceof AbstractBeanResolutionContext.MethodArgumentSegment && !paths.isEmpty()) {
-                paths.remove(0);
-            }
-        }
         if (paths.isEmpty()) {
             return null;
         }
-        if (CollectionUtils.isNotEmpty(paths)) {
-            final Iterator<BeanResolutionContext.Segment<?, ?>> i = paths.iterator();
-            BeanResolutionContext.Segment<?, ?> segment = null;
-            if (i.hasNext()) {
-                segment = i.next();
-                if (segment.getDeclaringType().hasStereotype(INTRODUCTION_TYPE)) {
-                    segment = i.hasNext() ? i.next() : null;
-                }
+        BeanResolutionContext.Segment<?, ?> current = paths.remove(0);
+        Class<?> currentDeclaringType = current.getDeclaringType().getBeanType();
+        for (BeanResolutionContext.Segment<?, ?> segment : paths) {
+            if (segment.getDeclaringType().hasStereotype(INTRODUCTION_TYPE)) {
+                continue;
             }
-            if (segment != null) {
-                InjectionPoint<T> ip = (InjectionPoint<T>) segment.getInjectionPoint();
-                if (ip != null) {
-                    return ip;
-                }
+            if (segment.getDeclaringType().getBeanType().equals(currentDeclaringType)) {
+                continue;
+            }
+            InjectionPoint<T> ip = (InjectionPoint<T>) segment.getInjectionPoint();
+            if (ip != null) {
+                return ip;
             }
         }
         return null;

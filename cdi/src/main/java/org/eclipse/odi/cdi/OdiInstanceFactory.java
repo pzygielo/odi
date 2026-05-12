@@ -56,7 +56,7 @@ public class OdiInstanceFactory {
         @SuppressWarnings("unchecked")
         Argument<T> injectArgument = (Argument<T>) Argument.OBJECT_ARGUMENT;
         Qualifier<T> qualifier = null;
-        jakarta.enterprise.inject.spi.InjectionPoint cdiInjectionPoint = null;
+        OdiInjectionPoint cdiInjectionPoint = null;
         if (argumentInjectionPoint != null) {
             Argument<T> argument = argumentInjectionPoint.asArgument();
             Argument[] typeParameters = argument.getTypeParameters();
@@ -70,11 +70,10 @@ public class OdiInstanceFactory {
                         resolutionContext.getContext().getClassLoader(),
                         new OdiBeanImpl<>(beanContainer.getBeanContext(), injectionPoint.getDeclaringBean()),
                         injectionPoint,
-                        injectionPoint instanceof ArgumentInjectionPoint ? ((ArgumentInjectionPoint<?, ?>) injectionPoint).asArgument() : injectArgument
+                        injectArgument
                 );
             }
         }
-
 
         return new OdiInstanceImpl<>(
                 (OdiBeanContainer) resolutionContext.getContext().getBean(BeanContainer.class),

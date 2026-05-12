@@ -18,6 +18,7 @@ package org.eclipse.odi.cdi.annotated;
 import io.micronaut.core.annotation.AnnotationMetadata;
 import io.micronaut.core.annotation.AnnotationUtil;
 import io.micronaut.core.annotation.Internal;
+import jakarta.enterprise.inject.Any;
 import jakarta.enterprise.inject.spi.Annotated;
 import jakarta.inject.Inject;
 
@@ -71,6 +72,10 @@ class OdiAnnotated implements Annotated {
     public boolean isAnnotationPresent(Class<? extends Annotation> annotationType) {
         if (annotationType == Inject.class) {
             return annotationMetadata.isAnnotationPresent(AnnotationUtil.INJECT);
+        }
+        if (annotationType == Any.class) {
+            return annotationMetadata.isAnnotationPresent(Any.class)
+                    || annotationMetadata.isAnnotationPresent(io.micronaut.context.annotation.Any.class);
         }
         return annotationMetadata.isAnnotationPresent(annotationType);
     }

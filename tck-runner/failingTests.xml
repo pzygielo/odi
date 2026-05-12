@@ -687,15 +687,6 @@
                     <exclude name=".*"/>
                 </methods>
             </class>
-            <class name="org.jboss.cdi.tck.tests.lookup.injectionpoint.dynamic.DynamicInjectionPointTest">
-                <!-- Correct in Core: field injection point is of type constructor-->
-                <methods>
-                    <exclude name="testInjectionPointGetAnnotated"/>
-                    <exclude name="testInjectionPointGetBean"/>
-                    <exclude name="testInjectionPointGetMember"/>
-                    <exclude name="testInjectionPointIsTransient"/>
-                </methods>
-            </class>
             <class name="org.jboss.cdi.tck.tests.lookup.injectionpoint.broken.disposer.DisposerInjectionPointMetadataTest">
                 <methods>
                     <exclude name=".*"/>
@@ -709,12 +700,6 @@
             <class name="org.jboss.cdi.tck.tests.lookup.injectionpoint.requiredtype.LegalRequiredTypeTest">
                 <methods>
                     <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.lookup.injectionpoint.InjectionPointTest">
-                <methods>
-                    <!-- Factory returns null -->
-                    <exclude name="testNullInjectionPointInjectedIntoNonInjectedObject"/>
                 </methods>
             </class>
             <class name="org.jboss.cdi.tck.tests.full.lookup.injectionpoint.InjectableReferenceTest">

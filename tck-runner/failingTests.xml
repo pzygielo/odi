@@ -23,6 +23,19 @@
         </packages>
 
         <classes>
+            <!-- CDI_FULL tests are excluded because ODI targets CDI Lite, not the CDI Full runtime extension/decorator/passivation surface. -->
+            <class name="org.jboss.cdi.tck.tests.full.lookup.injection.visibility.InjectionVisibilityTest">
+                <methods>
+                    <exclude name=".*"/>
+                </methods>
+            </class>
+            <class name="org.jboss.cdi.tck.tests.full.lookup.injectionpoint.InjectableReferenceTest">
+                <methods>
+                    <exclude name="testGetInjectableReferenceOnBeanManager"/>
+                    <exclude name="testGetInjectableReferenceReturnsDelegateForDelegateInjectionPoint"/>
+                </methods>
+            </class>
+
             <class name="org.jboss.cdi.tck.tests.se.events.lifecycle.StartupShutdownTest">
                 <methods>
                     <exclude name=".*"/>
@@ -297,11 +310,6 @@
             <class name="org.jboss.cdi.tck.tests.event.select.SelectEventTest">
                 <methods>
                     <exclude name="testEventSelectThrowsExceptionIfEventTypeHasTypeVariable"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.full.lookup.injection.visibility.InjectionVisibilityTest">
-                <methods>
-                    <exclude name=".*"/>
                 </methods>
             </class>
             <class name="org.jboss.cdi.tck.tests.implementation.simple.definition.broken.field.InjectedFieldAnnotatedWithProducesTest">
@@ -700,12 +708,6 @@
             <class name="org.jboss.cdi.tck.tests.lookup.injectionpoint.requiredtype.LegalRequiredTypeTest">
                 <methods>
                     <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.full.lookup.injectionpoint.InjectableReferenceTest">
-                <methods>
-                    <exclude name="testGetInjectableReferenceOnBeanManager"/>
-                    <exclude name="testGetInjectableReferenceReturnsDelegateForDelegateInjectionPoint"/>
                 </methods>
             </class>
             <class name="org.jboss.cdi.tck.tests.lookup.typesafe.resolution.interceptor.InterceptorNotResolvedTest">

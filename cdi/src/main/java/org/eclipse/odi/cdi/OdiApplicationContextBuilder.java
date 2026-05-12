@@ -15,7 +15,9 @@
  */
 package org.eclipse.odi.cdi;
 
+import io.micronaut.context.BeanResolutionCustomizer;
 import io.micronaut.context.DefaultApplicationContextBuilder;
+import io.micronaut.core.type.Argument;
 
 /**
  * ODI specific {@link DefaultApplicationContextBuilder}.
@@ -26,5 +28,11 @@ public final class OdiApplicationContextBuilder extends DefaultApplicationContex
         banner(false);
         allowEmptyProviders(true);
         customScopeRegistry(OdiCustomScopeRegistry::new);
+        beanResolutionCustomizer(new BeanResolutionCustomizer() {
+            @Override
+            public boolean shouldResolveArrayAsBean(Argument<?> injectionPoint) {
+                return true;
+            }
+        });
     }
 }

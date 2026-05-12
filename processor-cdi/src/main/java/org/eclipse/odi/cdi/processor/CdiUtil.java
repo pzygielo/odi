@@ -51,6 +51,7 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.OptionalInt;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -299,17 +300,24 @@ public final class CdiUtil {
         if (beanType == null) {
             return;
         }
+        boolean collapseDeclaredTypeVariables = !(beanDefinition instanceof ClassElement);
         Set<ClassElement> beanTypes = new LinkedHashSet<>();
         collectBeanTypes(beanType, beanTypes);
-        if (beanTypes.stream().noneMatch(CdiUtil::hasTypeArguments)) {
+        boolean hasMetadataTypes = beanTypes.stream().anyMatch(type -> hasTypeArguments(type, collapseDeclaredTypeVariables));
+        if (!hasMetadataTypes && collapseDeclaredTypeVariables) {
+            hasMetadataTypes = beanTypes.stream().anyMatch(CdiUtil::hasRawTypeArguments);
+        }
+        if (!hasMetadataTypes) {
             return;
         }
         for (ClassElement type : beanTypes) {
-            BeanTypeArguments typeArguments = toTypeArguments(type);
+            BeanTypeArguments typeArguments = toTypeArguments(type, collapseDeclaredTypeVariables);
             beanDefinition.annotate(AnnotationValue.builder(org.eclipse.odi.cdi.processor.AnnotationUtil.ANN_BEAN_TYPE)
                     .member(AnnotationMetadata.VALUE_MEMBER, new AnnotationClassValue<>(type.getName()))
                     .member("arguments", typeArguments.values.toArray(new AnnotationClassValue<?>[0]))
                     .member("argumentCounts", typeArguments.counts.stream().mapToInt(Integer::intValue).toArray())
+                    .member("typeVariables", toBooleanArray(typeArguments.typeVariables))
+                    .member("typeVariableNames", typeArguments.typeVariableNames.toArray(String[]::new))
                     .build());
         }
     }
@@ -341,32 +349,64 @@ public final class CdiUtil {
         beanType.getSuperType().ifPresent(superType -> collectBeanTypes(superType, beanTypes));
     }
 
-    private static boolean hasTypeArguments(ClassElement beanType) {
-        return !resolveTypeArguments(beanType).isEmpty();
+    private static boolean hasTypeArguments(ClassElement beanType, boolean collapseDeclaredTypeVariables) {
+        return !resolveTypeArguments(beanType, collapseDeclaredTypeVariables).isEmpty();
     }
 
-    private static BeanTypeArguments toTypeArguments(ClassElement beanType) {
+    private static boolean hasRawTypeArguments(ClassElement beanType) {
+        return JavaClassElementHelper.isRawClassElement(beanType) && !beanType.getTypeArguments().isEmpty();
+    }
+
+    private static BeanTypeArguments toTypeArguments(ClassElement beanType, boolean collapseDeclaredTypeVariables) {
         BeanTypeArguments metadata = new BeanTypeArguments();
-        collectTypeArguments(resolveTypeArguments(beanType), metadata);
+        collectTypeArguments(resolveTypeArguments(beanType, collapseDeclaredTypeVariables), metadata, collapseDeclaredTypeVariables);
         return metadata;
     }
 
-    private static void collectTypeArguments(List<ClassElement> typeArguments, BeanTypeArguments metadata) {
+    private static void collectTypeArguments(List<ClassElement> typeArguments,
+                                             BeanTypeArguments metadata,
+                                             boolean collapseDeclaredTypeVariables) {
         for (ClassElement typeArgument : typeArguments) {
-            List<ClassElement> nestedTypeArguments = resolveTypeArguments(typeArgument);
-            metadata.values.add(new AnnotationClassValue<>(typeArgument.getName()));
+            boolean typeVariable = typeArgument instanceof GenericPlaceholderElement;
+            ClassElement storedTypeArgument = typeArgument;
+            if (typeVariable) {
+                GenericPlaceholderElement placeholder = (GenericPlaceholderElement) typeArgument;
+                ClassElement resolvedTypeArgument = placeholder.getResolved().orElse(null);
+                if (resolvedTypeArgument != null) {
+                    storedTypeArgument = resolvedTypeArgument;
+                    typeVariable = false;
+                } else {
+                    List<? extends ClassElement> bounds = placeholder.getBounds();
+                    if (!bounds.isEmpty()) {
+                        storedTypeArgument = bounds.get(0);
+                    }
+                }
+            }
+            List<ClassElement> nestedTypeArguments = resolveTypeArguments(storedTypeArgument, collapseDeclaredTypeVariables);
+            metadata.values.add(new AnnotationClassValue<>(storedTypeArgument.getName()));
             metadata.counts.add(nestedTypeArguments.size());
-            collectTypeArguments(nestedTypeArguments, metadata);
+            metadata.typeVariables.add(typeVariable);
+            metadata.typeVariableNames.add(typeVariable ? ((GenericPlaceholderElement) typeArgument).getVariableName() : "");
+            collectTypeArguments(nestedTypeArguments, metadata, collapseDeclaredTypeVariables);
         }
     }
 
-    private static List<ClassElement> resolveTypeArguments(ClassElement beanType) {
-        if (JavaClassElementHelper.isRawClassElement(beanType)) {
-            return List.of();
-        }
+    private static List<ClassElement> resolveTypeArguments(ClassElement beanType, boolean collapseDeclaredTypeVariables) {
         List<ClassElement> typeArguments = new ArrayList<>(beanType.getBoundGenericTypes());
         if (typeArguments.isEmpty() && !beanType.getTypeArguments().isEmpty()) {
             typeArguments.addAll(beanType.getTypeArguments().values());
+        }
+        if (collapseDeclaredTypeVariables
+                && !typeArguments.isEmpty()
+                && typeArguments.stream().allMatch(typeArgument -> isDeclaredTypeVariable(beanType, typeArgument))) {
+            return List.of();
+        }
+        if (!typeArguments.isEmpty() && typeArguments.stream().allMatch(CdiUtil::isRawTypeVariable)) {
+            return List.of();
+        }
+        if (JavaClassElementHelper.isRawClassElement(beanType)
+                && (typeArguments.isEmpty() || typeArguments.stream().allMatch(typeArgument -> isDeclaredTypeVariable(beanType, typeArgument)))) {
+            return List.of();
         }
         if (typeArguments.isEmpty() && !beanType.getDeclaredGenericPlaceholders().isEmpty()) {
             for (GenericPlaceholderElement placeholder : beanType.getDeclaredGenericPlaceholders()) {
@@ -379,9 +419,38 @@ public final class CdiUtil {
         return typeArguments;
     }
 
+    private static boolean isRawTypeVariable(ClassElement typeArgument) {
+        return typeArgument instanceof GenericPlaceholderElement && typeArgument.isRawType();
+    }
+
+    private static boolean isDeclaredTypeVariable(ClassElement beanType, ClassElement typeArgument) {
+        if (!(typeArgument instanceof GenericPlaceholderElement)) {
+            return false;
+        }
+        GenericPlaceholderElement placeholder = (GenericPlaceholderElement) typeArgument;
+        Map<String, ClassElement> typeArguments = beanType.getTypeArguments();
+        ClassElement namedTypeArgument = typeArguments.get(placeholder.getVariableName());
+        if (namedTypeArgument instanceof GenericPlaceholderElement
+                && ((GenericPlaceholderElement) namedTypeArgument).getVariableName().equals(placeholder.getVariableName())) {
+            return true;
+        }
+        return beanType.getDeclaredGenericPlaceholders().stream()
+                .anyMatch(declaredPlaceholder -> declaredPlaceholder.getVariableName().equals(placeholder.getVariableName()));
+    }
+
+    private static boolean[] toBooleanArray(List<Boolean> values) {
+        boolean[] array = new boolean[values.size()];
+        for (int i = 0; i < values.size(); i++) {
+            array[i] = values.get(i);
+        }
+        return array;
+    }
+
     private static final class BeanTypeArguments {
         private final List<AnnotationClassValue<?>> values = new ArrayList<>();
         private final List<Integer> counts = new ArrayList<>();
+        private final List<Boolean> typeVariables = new ArrayList<>();
+        private final List<String> typeVariableNames = new ArrayList<>();
     }
 
     public static boolean hasDependentScope(Element beanDefinition, VisitorContext context) {

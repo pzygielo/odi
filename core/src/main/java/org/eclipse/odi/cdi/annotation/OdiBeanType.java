@@ -45,4 +45,14 @@ public @interface OdiBeanType {
      * @return Number of nested type arguments for each flattened type argument.
      */
     int[] argumentCounts() default {};
+
+    /**
+     * @return Whether each flattened type argument represents a type variable.
+     */
+    boolean[] typeVariables() default {};
+
+    /**
+     * @return Type variable names for flattened type variable arguments.
+     */
+    String[] typeVariableNames() default {};
 }

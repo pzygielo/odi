@@ -723,17 +723,10 @@
                     <exclude name="testGetInjectableReferenceReturnsDelegateForDelegateInjectionPoint"/>
                 </methods>
             </class>
-            <class name="org.jboss.cdi.tck.tests.lookup.typesafe.resolution.parameterized.raw.RawBeanTypeParameterizedRequiredTypeTest">
-                <methods>
-                    <exclude name="testNotAssignableTypeParams"/>
-                </methods>
-            </class>
             <class name="org.jboss.cdi.tck.tests.lookup.typesafe.resolution.parameterized.AssignabilityOfRawAndParameterizedTypesTest">
                 <methods>
                     <exclude
                             name="testAssignabilityOfParameterizedTypeWithTypeVariableWithMultipleBoundsToParameterizedTypeWithTypeVariable"/>
-                    <exclude
-                            name="testAssignabilityOfParameterizedTypeWithTypeVariablesToParameterizedTypeWithActualTypes"/>
                     <exclude
                             name="testAssignabilityOfParameterizedTypeWithTypeVariablesToParameterizedTypeWithTypeVariable"/>
                     <exclude

@@ -148,15 +148,6 @@
                     <exclude name="testParameterizedResolvedType"/>
                 </methods>
             </class>
-            <!-- Validate this statement:
-             This class is not a bean since it does not have a default constructor nor does it have a constructor annotated with {@link
- * @Inject}. As such, an observer method is not detected on this class.
-             -->
-            <class name="org.jboss.cdi.tck.tests.event.broken.observer.beanNotManaged.ObserverMethodOnIncorrectBeanTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
             <!--            Cannot apply AOP advice to final class-->
             <class name="org.jboss.cdi.tck.tests.implementation.simple.lifecycle.unproxyable.UnproxyableManagedBeanTest">
                 <methods>

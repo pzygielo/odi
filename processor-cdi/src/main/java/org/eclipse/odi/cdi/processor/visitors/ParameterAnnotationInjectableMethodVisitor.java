@@ -66,6 +66,11 @@ abstract class ParameterAnnotationInjectableMethodVisitor<T extends Annotation> 
             disqualifyMethod(element);
             return;
         }
+        if (!isBeanDeclaringType(currentClass)
+                || (element.isAbstract() && !element.getDeclaringType().getName().equals(currentClass.getName()))) {
+            disqualifyMethod(element);
+            return;
+        }
         final List<ParameterElement> parameters = Arrays
                 .stream(element.getParameters())
                 .filter(p -> p.hasDeclaredAnnotation(getParameterAnnotation()))
@@ -112,6 +117,12 @@ abstract class ParameterAnnotationInjectableMethodVisitor<T extends Annotation> 
         }
         CdiUtil.visitQualifierDefaults(context, parameter);
         handleMatch(element, parameter, context);
+    }
+
+    private boolean isBeanDeclaringType(ClassElement declaringType) {
+        return !declaringType.isInterface()
+                && !declaringType.isAbstract()
+                && CdiUtil.isBeanClass(declaringType);
     }
 
     protected boolean validateParameter(MethodElement methodElement, ParameterElement parameterElement, VisitorContext context) {

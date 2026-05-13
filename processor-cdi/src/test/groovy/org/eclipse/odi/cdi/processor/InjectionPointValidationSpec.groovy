@@ -283,6 +283,37 @@ interface Animal {
 ''')
     }
 
+    void "test observer method on non bean class compiles"() {
+        when:
+        buildBeanDefinition('observernonbean.ConcreteBean', '''
+package observernonbean;
+
+import jakarta.enterprise.event.Observes;
+import jakarta.enterprise.inject.Any;
+
+abstract class AbstractBean {
+    public abstract void observer(@Observes @Any String event);
+}
+
+class ConcreteBean extends AbstractBean {
+    @Override
+    public void observer(String event) {
+    }
+}
+
+class NonManagedBean {
+    NonManagedBean(String name) {
+    }
+
+    void observe(@Observes @Any String event) {
+    }
+}
+''')
+
+        then:
+        noExceptionThrown()
+    }
+
     void "test type variable injection point on vetoed superclass compiles"() {
         expect:
         buildBeanDefinition('typevariablevetoed.Consumer', '''

@@ -22,6 +22,7 @@ import io.micronaut.core.annotation.AnnotationUtil;
 import io.micronaut.core.annotation.Internal;
 import io.micronaut.core.annotation.Order;
 import io.micronaut.core.naming.NameUtils;
+import io.micronaut.core.util.AntPathMatcher;
 import io.micronaut.inject.annotation.AnnotationMetadataHierarchy;
 import io.micronaut.inject.ast.ClassElement;
 import io.micronaut.inject.ast.ConstructorElement;
@@ -74,6 +75,7 @@ public final class CdiUtil {
     public static final String SPEC_LOCATION = "https://jakarta.ee/specifications/cdi/3.0/jakarta-cdi-spec-3.0.html";
     public static final String BEAN_CLASSES_OPTION = "micronaut.cdi.bean.classes";
     public static final String BUILD_COMPATIBLE_EXTENSIONS_OPTION = "micronaut.cdi.build.compatible.extensions";
+    private static final String SELECTED_ALTERNATIVES_OPTION = "odi.selected-alternatives";
     private static final String DEPLOYMENT_EXCEPTION_MARKER = "[ODI_DEPLOYMENT_EXCEPTION] ";
 
     private CdiUtil() {
@@ -1024,6 +1026,7 @@ public final class CdiUtil {
                                                 ClassElement candidate,
                                                 Set<ResolvableCandidate> candidates) {
         if (isResolvableBeanClass(context, candidate)
+                && isBeanEnabled(context, candidate)
                 && matchesRequiredQualifiers(context, injectPoint, candidate)
                 && hasBeanTypeAssignableToRequiredType(injectPointType, candidate)) {
             candidates.add(new ResolvableCandidate(candidate.getName(), false, requiresRuntimeResolution(candidate)));
@@ -1070,6 +1073,7 @@ public final class CdiUtil {
                                              MemberElement producer,
                                              Set<ResolvableCandidate> candidates) {
         if (matchesRequiredQualifiers(context, injectPoint, producer)
+                && isBeanEnabled(context, producer)
                 && hasBeanTypeAssignableToRequiredType(injectPointType, producedType)) {
             candidates.add(new ResolvableCandidate(
                     producer.getDeclaringType().getName() + "." + producer.getName(),
@@ -1165,14 +1169,59 @@ public final class CdiUtil {
                 && !candidate.hasAnnotation(io.micronaut.core.annotation.Vetoed.class)
                 && !candidate.hasAnnotation(jakarta.enterprise.inject.Vetoed.class)
                 && org.eclipse.odi.cdi.processor.AnnotationUtil.hasBeanDefiningAnnotation(candidate)
+                && isBeanEnabled(context, candidate)
                 && isBeanClass(candidate);
     }
 
-    private static boolean requiresRuntimeResolution(Element element) {
+    private static boolean isBeanEnabled(VisitorContext context, Element element) {
+        if (!isAlternative(element)) {
+            return true;
+        }
+        if (hasPriority(element)) {
+            return true;
+        }
+        String beanClassName = selectedAlternativeBeanClassName(element);
+        if (beanClassName == null) {
+            return false;
+        }
+        String selectedAlternatives = context.getOptions().get(SELECTED_ALTERNATIVES_OPTION);
+        if (selectedAlternatives == null || selectedAlternatives.isBlank()) {
+            selectedAlternatives = System.getProperty(SELECTED_ALTERNATIVES_OPTION);
+        }
+        if (selectedAlternatives == null || selectedAlternatives.isBlank()) {
+            return false;
+        }
+        AntPathMatcher matcher = new AntPathMatcher();
+        for (String selectedAlternative : selectedAlternatives.split(",")) {
+            String pattern = selectedAlternative.trim();
+            if (!pattern.isEmpty() && matcher.matches(pattern, beanClassName)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isAlternative(Element element) {
         return element.hasStereotype(jakarta.enterprise.inject.Alternative.class)
-                || element.hasAnnotation(jakarta.enterprise.inject.Alternative.class)
-                || element.hasStereotype(Priority.class)
-                || element.hasAnnotation(Priority.class);
+                || element.hasAnnotation(jakarta.enterprise.inject.Alternative.class);
+    }
+
+    private static boolean hasPriority(Element element) {
+        return element.hasStereotype(Priority.class) || element.hasAnnotation(Priority.class);
+    }
+
+    private static String selectedAlternativeBeanClassName(Element element) {
+        if (element instanceof ClassElement) {
+            return ((ClassElement) element).getName();
+        }
+        if (element instanceof MemberElement) {
+            return ((MemberElement) element).getDeclaringType().getName();
+        }
+        return null;
+    }
+
+    private static boolean requiresRuntimeResolution(Element element) {
+        return isAlternative(element) || hasPriority(element);
     }
 
     private static boolean matchesRequiredQualifiers(VisitorContext context, Element injectPoint, Element candidate) {

@@ -459,6 +459,60 @@ class Product {
 ''')
     }
 
+    void "test disabled alternative is unavailable for injection"() {
+        when:
+        withBeanClasses('disabledalternative.Sea,disabledalternative.CrabSpider') {
+            buildBeanDefinition('disabledalternative.Sea', '''
+package disabledalternative;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.inject.Alternative;
+import jakarta.inject.Inject;
+
+@Dependent
+class Sea {
+    @Inject
+    CrabSpider crabSpider;
+}
+
+@Alternative
+@Dependent
+class CrabSpider {
+}
+''')
+        }
+
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains("Unsatisfied dependency for injection point of type disabledalternative.CrabSpider")
+    }
+
+    void "test priority alternative is available for injection"() {
+        expect:
+        withBeanClasses('priorityalternative.Sea,priorityalternative.CrabSpider') {
+            buildBeanDefinition('priorityalternative.Sea', '''
+package priorityalternative;
+
+import jakarta.annotation.Priority;
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.inject.Alternative;
+import jakarta.inject.Inject;
+
+@Dependent
+class Sea {
+    @Inject
+    CrabSpider crabSpider;
+}
+
+@Alternative
+@Priority(1)
+@Dependent
+class CrabSpider {
+}
+''')
+        }
+    }
+
     private static Object withBeanClasses(String classNames, Closure<?> closure) {
         String previous = System.getProperty(CdiUtil.BEAN_CLASSES_OPTION)
         System.setProperty(CdiUtil.BEAN_CLASSES_OPTION, classNames)

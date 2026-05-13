@@ -43,16 +43,43 @@ final class OdiTypeUtils {
 
     static Type getRequiredType(Argument<?> argument) {
         List<AnnotationValue<OdiBeanType>> metadataTypes = argument.getAnnotationMetadata().getAnnotationValuesByType(OdiBeanType.class);
+        Type resolvedArgumentType = toType(argument);
         if (metadataTypes.isEmpty()) {
             return null;
         }
         for (AnnotationValue<OdiBeanType> metadataType : metadataTypes) {
             Class<?> rawType = metadataType.classValue().orElse(null);
             if (rawType == argument.getType()) {
-                return toType(metadataType);
+                return selectRequiredType(toType(metadataType), resolvedArgumentType);
             }
         }
-        return toType(metadataTypes.get(0));
+        return selectRequiredType(toType(metadataTypes.get(0)), resolvedArgumentType);
+    }
+
+    private static Type selectRequiredType(Type metadataType, Type resolvedArgumentType) {
+        if (containsTypeVariable(metadataType)
+                && resolvedArgumentType != null
+                && !containsTypeVariable(resolvedArgumentType)
+                && isSameRawType(metadataType, resolvedArgumentType)
+                && hasOnlyUnboundedTypeVariables(metadataType)) {
+            return resolvedArgumentType;
+        }
+        return metadataType;
+    }
+
+    private static Type toType(Argument<?> argument) {
+        Argument<?>[] typeParameters = argument.getTypeParameters();
+        if (typeParameters.length == 0) {
+            return argument.getType();
+        }
+        Type[] arguments = new Type[typeParameters.length];
+        for (int i = 0; i < typeParameters.length; i++) {
+            arguments[i] = toType(typeParameters[i]);
+        }
+        if (argument.isTypeVariable()) {
+            return new OdiTypeVariable(argument.getName(), new Type[]{argument.getType()});
+        }
+        return new OdiParameterizedType(argument.getType(), arguments);
     }
 
     static Set<Type> getBeanTypes(AnnotationMetadata annotationMetadata) {
@@ -344,6 +371,66 @@ final class OdiTypeUtils {
         return type != null && !containsWildcard(type);
     }
 
+    private static boolean containsTypeVariable(Type type) {
+        if (isTypeVariable(type)) {
+            return true;
+        }
+        if (type instanceof ParameterizedType) {
+            for (Type argument : ((ParameterizedType) type).getActualTypeArguments()) {
+                if (containsTypeVariable(argument)) {
+                    return true;
+                }
+            }
+        }
+        if (type instanceof GenericArrayType) {
+            return containsTypeVariable(((GenericArrayType) type).getGenericComponentType());
+        }
+        if (type instanceof WildcardType) {
+            WildcardType wildcard = (WildcardType) type;
+            for (Type upperBound : wildcard.getUpperBounds()) {
+                if (containsTypeVariable(upperBound)) {
+                    return true;
+                }
+            }
+            for (Type lowerBound : wildcard.getLowerBounds()) {
+                if (containsTypeVariable(lowerBound)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean hasOnlyUnboundedTypeVariables(Type type) {
+        if (isTypeVariable(type)) {
+            return hasOnlyObjectUpperBound(type);
+        }
+        if (type instanceof ParameterizedType) {
+            for (Type argument : ((ParameterizedType) type).getActualTypeArguments()) {
+                if (!hasOnlyUnboundedTypeVariables(argument)) {
+                    return false;
+                }
+            }
+        }
+        if (type instanceof GenericArrayType) {
+            return hasOnlyUnboundedTypeVariables(((GenericArrayType) type).getGenericComponentType());
+        }
+        if (type instanceof WildcardType) {
+            WildcardType wildcard = (WildcardType) type;
+            for (Type upperBound : wildcard.getUpperBounds()) {
+                if (!hasOnlyUnboundedTypeVariables(upperBound)) {
+                    return false;
+                }
+            }
+            for (Type lowerBound : wildcard.getLowerBounds()) {
+                if (!hasOnlyUnboundedTypeVariables(lowerBound)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
     private static boolean containsWildcard(Type type) {
         if (type instanceof WildcardType) {
             return true;
@@ -359,6 +446,12 @@ final class OdiTypeUtils {
             return containsWildcard(((GenericArrayType) type).getGenericComponentType());
         }
         return false;
+    }
+
+    private static boolean isSameRawType(Type left, Type right) {
+        Class<?> leftRawType = rawType(left);
+        Class<?> rightRawType = rawType(right);
+        return leftRawType != null && leftRawType.equals(rightRawType);
     }
 
     private static Class<?> rawType(Type type) {

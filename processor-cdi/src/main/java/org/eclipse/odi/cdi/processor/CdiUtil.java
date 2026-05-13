@@ -510,11 +510,11 @@ public final class CdiUtil {
         }
         visitQualifierDefaults(context, injectPoint);
         visitRequiredType(injectPoint);
-        return CdiUtil.validateInjectedType(context, injectPoint.getGenericType(), injectPoint);
+        return CdiUtil.validateInjectedType(context, resolveInjectPointType(injectPoint), injectPoint);
     }
 
     private static void visitRequiredType(TypedElement injectPoint) {
-        ClassElement requiredType = injectPoint.getGenericType();
+        ClassElement requiredType = resolveInjectPointType(injectPoint);
         if (requiredType == null || !hasTypeArguments(requiredType, false)) {
             return;
         }
@@ -528,6 +528,13 @@ public final class CdiUtil {
                 .member("lowerBoundCounts", typeArguments.lowerBoundCounts.stream().mapToInt(Integer::intValue).toArray())
                 .member("typeVariableNames", typeArguments.typeVariableNames.toArray(String[]::new))
                 .build());
+    }
+
+    private static ClassElement resolveInjectPointType(TypedElement injectPoint) {
+        if (injectPoint instanceof FieldElement) {
+            return ((FieldElement) injectPoint).getGenericField();
+        }
+        return injectPoint.getGenericType();
     }
 
     public static void visitQualifierDefaults(VisitorContext context, Element element) {

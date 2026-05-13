@@ -41,11 +41,6 @@
                     <exclude name="testEvents"/>
                 </methods>
             </class>
-            <class name="org.jboss.cdi.tck.tests.event.lifecycle.StartupShutdownTest">
-                <methods>
-                    <exclude name="testEventsObserved"/>
-                </methods>
-            </class>
             <!--
             Support:
             @Deployment
@@ -106,11 +101,6 @@
             <class name="org.jboss.cdi.tck.tests.definition.scope.ScopeDefinitionTest">
                 <methods>
                     <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.event.observer.priority.contextLifecycleEvent.ApplicationContextLifecycleEventObserverOrderingTest">
-                <methods>
-                    <exclude name="testContextLifecycleEventOrdering"/>
                 </methods>
             </class>
             <class name="org.jboss.cdi.tck.tests.event.resolve.typeWithParameters.CheckTypeParametersWhenResolvingObserversTest">

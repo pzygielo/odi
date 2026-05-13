@@ -182,4 +182,106 @@ class Test {
 
 ''')
     }
+
+    void 'test fail compilation with normal scoped public final method'() {
+        when:
+        buildBeanDefinition('appscope.Test', '''
+package appscope;
+
+@jakarta.enterprise.context.RequestScoped
+class Test {
+    public final String getName() {
+        return null;
+    }
+}
+
+''')
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains('Managed bean classes with non-private, non-static final methods must have @Dependent scope')
+    }
+
+    void 'test fail compilation with normal scoped protected final method'() {
+        when:
+        buildBeanDefinition('appscope.Test', '''
+package appscope;
+
+@jakarta.enterprise.context.RequestScoped
+class Test {
+    protected final void swim() {
+    }
+}
+
+''')
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains('Managed bean classes with non-private, non-static final methods must have @Dependent scope')
+    }
+
+    void 'test fail compilation with normal scoped package private final method'() {
+        when:
+        buildBeanDefinition('appscope.Test', '''
+package appscope;
+
+@jakarta.enterprise.context.RequestScoped
+class Test {
+    final void swim() {
+    }
+}
+
+''')
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains('Managed bean classes with non-private, non-static final methods must have @Dependent scope')
+    }
+
+    void 'test fail compilation with normal scoped inherited final method'() {
+        when:
+        buildBeanDefinition('appscope.Test', '''
+package appscope;
+
+class Base {
+    public final String getName() {
+        return null;
+    }
+}
+
+@jakarta.enterprise.context.RequestScoped
+class Test extends Base {
+}
+
+''')
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains('Managed bean classes with non-private, non-static final methods must have @Dependent scope')
+    }
+
+    void 'test normal scoped private final method compiles'() {
+        expect:
+        buildBeanDefinition('appscope.Test', '''
+package appscope;
+
+@jakarta.enterprise.context.RequestScoped
+class Test {
+    private final void swim() {
+    }
+}
+
+''')
+    }
+
+    void 'test normal scoped static final method compiles'() {
+        expect:
+        buildBeanDefinition('appscope.Test', '''
+package appscope;
+
+@jakarta.enterprise.context.RequestScoped
+class Test {
+    public static final String getName() {
+        return null;
+    }
+}
+
+''')
+    }
 }

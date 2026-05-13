@@ -244,26 +244,6 @@
                     <exclude name="testDisposerMethodsAreIntercepted"/>
                 </methods>
             </class>
-            <class name="org.jboss.cdi.tck.tests.lookup.clientProxy.unproxyable.finalMethod.PublicFinalMethodNotProxyableTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.lookup.clientProxy.unproxyable.finalMethod.NonPrivateNonStaticSuperclassMethodTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.lookup.clientProxy.unproxyable.finalMethod.PackagePrivateFinalMethodNotProxyableTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.lookup.clientProxy.unproxyable.finalMethod.ProtectedFinalMethodNotProxyableTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
             <class name="org.jboss.cdi.tck.tests.lookup.clientProxy.unproxyable.beanConstructor.BeanConstructorWithParametersTest">
                 <methods>
                     <exclude name=".*"/>

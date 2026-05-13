@@ -810,6 +810,25 @@ public final class CdiUtil {
         return false;
     }
 
+    public static boolean validateNormalScopeFinalMethods(VisitorContext context, ClassElement classElement) {
+        if (!classElement.hasStereotype(jakarta.enterprise.context.NormalScope.class.getName())) {
+            return false;
+        }
+        for (MethodElement method : classElement.getEnclosedElements(ElementQuery.ALL_METHODS
+                .onlyInstance()
+                .includeOverriddenMethods()
+                .includeHiddenElements())) {
+            if (method.isFinal() && !method.isPrivate() && !method.isSynthetic()) {
+                context.fail(
+                        DEPLOYMENT_EXCEPTION_MARKER + "Managed bean classes with non-private, non-static final methods must have @Dependent scope",
+                        method
+                );
+                return true;
+            }
+        }
+        return false;
+    }
+
     public static boolean validateProducerType(VisitorContext context, ClassElement producerType, Element producerElement) {
         if (containsWildcard(producerType)) {
             context.fail("Producer type must not contain wildcard type parameters", producerElement);

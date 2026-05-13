@@ -16,11 +16,14 @@
 package org.eclipse.odi.cdi;
 
 import io.micronaut.context.BeanResolutionCustomizer;
+import io.micronaut.context.BeanRegistration;
+import io.micronaut.context.BeanResolutionContext;
 import io.micronaut.context.DefaultApplicationContextBuilder;
 import io.micronaut.core.reflect.ReflectionUtils;
 import io.micronaut.core.type.Argument;
 import io.micronaut.inject.BeanDefinition;
 import io.micronaut.inject.QualifiedBeanType;
+import jakarta.enterprise.inject.TransientReference;
 
 import java.lang.reflect.Type;
 import java.util.Optional;
@@ -58,6 +61,13 @@ public final class OdiApplicationContextBuilder extends DefaultApplicationContex
                     return Optional.of(primitiveDefaultValue(requestedType));
                 }
                 return Optional.empty();
+            }
+
+            @Override
+            public boolean shouldDestroyDependentBeanAfterResolution(BeanResolutionContext resolutionContext, BeanRegistration<?> beanRegistration) {
+                return resolutionContext.getPath().currentSegment()
+                        .map(segment -> segment.getArgument().getAnnotationMetadata().hasAnnotation(TransientReference.class))
+                        .orElse(false);
             }
 
             @Override

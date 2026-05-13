@@ -229,4 +229,73 @@ interface Animal {
 }
 ''')
     }
+
+    void "test injection point metadata in normal scoped bean fails"() {
+        when:
+        buildBeanDefinition('metadataip.Cat', '''
+package metadataip;
+
+import jakarta.enterprise.context.RequestScoped;
+import jakarta.enterprise.inject.spi.InjectionPoint;
+import jakarta.inject.Inject;
+
+@RequestScoped
+class Cat {
+    @Inject
+    InjectionPoint injectionPoint;
+}
+''')
+
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains("InjectionPoint metadata may only be injected into @Dependent beans")
+    }
+
+    void "test injection point metadata in dependent bean compiles"() {
+        expect:
+        buildBeanDefinition('dependentmetadataip.Cat', '''
+package dependentmetadataip;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.inject.spi.InjectionPoint;
+import jakarta.inject.Inject;
+
+@Dependent
+class Cat {
+    @Inject
+    InjectionPoint fieldInjectionPoint;
+
+    @Inject
+    Cat(InjectionPoint constructorInjectionPoint) {
+    }
+
+    @Inject
+    void init(InjectionPoint methodInjectionPoint) {
+    }
+}
+''')
+    }
+
+    void "test injection point metadata in dependent producer method compiles"() {
+        expect:
+        buildBeanDefinition('producermetadataip.Factory', '''
+package producermetadataip;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.inject.Produces;
+import jakarta.enterprise.inject.spi.InjectionPoint;
+
+@Dependent
+class Factory {
+    @Produces
+    @Dependent
+    Product produce(InjectionPoint injectionPoint) {
+        return new Product();
+    }
+}
+
+class Product {
+}
+''')
+    }
 }

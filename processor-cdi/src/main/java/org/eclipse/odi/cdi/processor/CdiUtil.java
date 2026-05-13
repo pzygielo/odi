@@ -46,6 +46,7 @@ import jakarta.enterprise.inject.Disposes;
 import jakarta.enterprise.inject.Instance;
 import jakarta.enterprise.inject.Produces;
 import jakarta.enterprise.inject.Stereotype;
+import jakarta.enterprise.inject.spi.InjectionPoint;
 import jakarta.inject.Inject;
 import jakarta.interceptor.Interceptor;
 
@@ -519,6 +520,9 @@ public final class CdiUtil {
         if (CdiUtil.validateInjectedType(context, injectPointType, injectPoint)) {
             return true;
         }
+        if (CdiUtil.validateInjectionPointMetadata(context, injectPointType, injectPoint)) {
+            return true;
+        }
         return validateResolvableInjectionPoint(context, injectPointType, injectPoint);
     }
 
@@ -650,6 +654,43 @@ public final class CdiUtil {
             return true;
         }
         return false;
+    }
+
+    private static boolean validateInjectionPointMetadata(VisitorContext context,
+                                                          ClassElement injectPointType,
+                                                          TypedElement injectPoint) {
+        if (!InjectionPoint.class.getName().equals(injectPointType.getName())
+                || !injectPoint.hasAnnotation(Default.class)
+                || !hasOnlyDefaultInjectionPointQualifier(context, injectPoint)) {
+            return false;
+        }
+        Element declaringBean = resolveDeclaringBean(injectPoint);
+        if (declaringBean != null && !hasDependentScope(declaringBean, context)) {
+            context.fail("InjectionPoint metadata may only be injected into @Dependent beans", injectPoint);
+            return true;
+        }
+        return false;
+    }
+
+    private static Element resolveDeclaringBean(TypedElement injectPoint) {
+        if (injectPoint instanceof FieldElement) {
+            return ((FieldElement) injectPoint).getOwningType();
+        }
+        if (injectPoint instanceof ParameterElement) {
+            try {
+                MethodElement methodElement = ((ParameterElement) injectPoint).getMethodElement();
+                if (methodElement.hasDeclaredAnnotation(Produces.class)) {
+                    return methodElement;
+                }
+                return methodElement.getOwningType();
+            } catch (IllegalStateException e) {
+                return null;
+            }
+        }
+        if (injectPoint instanceof MemberElement) {
+            return ((MemberElement) injectPoint).getOwningType();
+        }
+        return null;
     }
 
     private static boolean validateResolvableInjectionPoint(VisitorContext context,
@@ -855,6 +896,17 @@ public final class CdiUtil {
         qualifierNames.remove(Any.class.getName());
         qualifierNames.remove(Default.class.getName());
         qualifierNames.remove(jakarta.inject.Named.class.getName());
+        return qualifierNames.isEmpty();
+    }
+
+    private static boolean hasOnlyDefaultInjectionPointQualifier(VisitorContext context, Element element) {
+        Set<String> qualifierNames = new LinkedHashSet<>(element.getAnnotationNamesByStereotype(AnnotationUtil.QUALIFIER));
+        for (String annotationName : element.getAnnotationNames()) {
+            if (isQualifierAnnotation(context, annotationName)) {
+                qualifierNames.add(annotationName);
+            }
+        }
+        qualifierNames.remove(Default.class.getName());
         return qualifierNames.isEmpty();
     }
 

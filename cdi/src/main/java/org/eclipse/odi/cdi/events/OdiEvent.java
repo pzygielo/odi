@@ -319,6 +319,7 @@ final class OdiEvent<T> implements Event<T>, OdiEventMetadata {
     }
 
     private <K> EventContext<K> createContext(K event) {
+        OdiEventMetadata metadata = createMetadata(resolveRuntimeArgument(event));
         return new EventContext<K>() {
             @Override
             public K getEvent() {
@@ -327,7 +328,32 @@ final class OdiEvent<T> implements Event<T>, OdiEventMetadata {
 
             @Override
             public EventMetadata getMetadata() {
-                return OdiEvent.this;
+                return metadata;
+            }
+        };
+    }
+
+    private OdiEventMetadata createMetadata(Argument<?> resolvedEventArgument) {
+        Type resolvedEventType = resolvedEventArgument.asType();
+        return new OdiEventMetadata() {
+            @Override
+            public Qualifier<?> getQualifier() {
+                return OdiEvent.this.getQualifier();
+            }
+
+            @Override
+            public Set<Annotation> getQualifiers() {
+                return OdiEvent.this.getQualifiers();
+            }
+
+            @Override
+            public jakarta.enterprise.inject.spi.InjectionPoint getInjectionPoint() {
+                return OdiEvent.this.getInjectionPoint();
+            }
+
+            @Override
+            public Type getType() {
+                return resolvedEventType;
             }
         };
     }

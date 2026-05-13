@@ -142,12 +142,6 @@
                     <exclude name="testConditionalObserver"/>
                 </methods>
             </class>
-            <class name="org.jboss.cdi.tck.tests.event.metadata.EventMetadataTest">
-                <methods>
-                    <!-- Might be a TCK error, event is of type List but the validation expects ArrayList -->
-                    <exclude name="testParameterizedResolvedType"/>
-                </methods>
-            </class>
             <!--            Cannot apply AOP advice to final class-->
             <class name="org.jboss.cdi.tck.tests.implementation.simple.lifecycle.unproxyable.UnproxyableManagedBeanTest">
                 <methods>

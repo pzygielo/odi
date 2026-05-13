@@ -24,6 +24,8 @@ import jakarta.enterprise.inject.build.compatible.spi.ObserverInfo;
 import jakarta.enterprise.lang.model.AnnotationTarget;
 
 final class MessagesImpl implements Messages {
+    private static final String DEPLOYMENT_EXCEPTION_MARKER = "[ODI_DEPLOYMENT_EXCEPTION] ";
+
     private final VisitorContext visitorContext;
 
     MessagesImpl(VisitorContext visitorContext) {
@@ -85,14 +87,14 @@ final class MessagesImpl implements Messages {
 
     @Override
     public void error(String message) {
-        visitorContext.fail(message, null);
+        visitorContext.fail(DEPLOYMENT_EXCEPTION_MARKER + message, null);
     }
 
     @Override
     public void error(String message, AnnotationTarget relatedTo) {
         Element element = toElement((AnnotationTargetImpl) relatedTo);
         visitorContext.fail(
-                message,
+                DEPLOYMENT_EXCEPTION_MARKER + message,
                 element
         );
     }
@@ -109,6 +111,6 @@ final class MessagesImpl implements Messages {
 
     @Override
     public void error(Exception exception) {
-        visitorContext.fail("An error occurred: " + exception.getMessage(), null);
+        visitorContext.fail(DEPLOYMENT_EXCEPTION_MARKER + "An error occurred: " + exception.getMessage(), null);
     }
 }

@@ -109,11 +109,6 @@
                     <exclude name="testInterceptorInstanceCreatedWhenTargetInstanceCreated"/>
                 </methods>
             </class>
-            <class name="org.jboss.cdi.tck.tests.definition.bean.genericbroken.GenericManagedBeanTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
             <!-- Scopes inheritance -->
             <class name="org.jboss.cdi.tck.tests.definition.scope.ScopeDefinitionTest">
                 <methods>

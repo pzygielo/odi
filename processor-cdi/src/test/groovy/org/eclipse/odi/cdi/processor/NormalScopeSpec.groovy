@@ -22,7 +22,7 @@ import io.micronaut.runtime.context.scope.ScopedProxy
 import jakarta.enterprise.context.ApplicationScoped
 import jakarta.enterprise.context.RequestScoped
 
-import javax.inject.Scope
+import jakarta.inject.Scope
 
 class NormalScopeSpec extends AbstractTypeElementSpec {
 
@@ -110,5 +110,34 @@ final class Test {
         then:
         def e = thrown(RuntimeException)
         e.message.contains('Class must be made non-final to support proxying')
+    }
+
+    void 'test fail compilation with normal scoped generic managed bean'() {
+        when:
+        buildBeanDefinition('appscope.Test', '''
+package appscope;
+
+@jakarta.enterprise.context.ApplicationScoped
+class Test<T> {
+
+}
+
+''')
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains('Managed bean classes with type parameters must have @Dependent scope')
+    }
+
+    void 'test dependent generic managed bean compiles'() {
+        expect:
+        buildBeanDefinition('appscope.Test', '''
+package appscope;
+
+@jakarta.enterprise.context.Dependent
+class Test<T> {
+
+}
+
+''')
     }
 }

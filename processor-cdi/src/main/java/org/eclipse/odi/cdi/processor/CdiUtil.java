@@ -623,6 +623,14 @@ public final class CdiUtil {
         return false;
     }
 
+    public static boolean validateGenericBeanScope(VisitorContext context, ClassElement classElement) {
+        if (!classElement.getDeclaredGenericPlaceholders().isEmpty() && !hasDependentScope(classElement, context)) {
+            context.fail("Managed bean classes with type parameters must have @Dependent scope", classElement);
+            return true;
+        }
+        return false;
+    }
+
     private static boolean validateResolvableInjectionPoint(VisitorContext context,
                                                             ClassElement injectPointType,
                                                             TypedElement injectPoint) {

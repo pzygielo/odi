@@ -41,24 +41,6 @@
                     <exclude name="testEvents"/>
                 </methods>
             </class>
-            <!--
-            Support:
-            @Deployment
-    public static WebArchive createTestArchive() {
-        return createBuilderBase().withTestClass(SelectedAlternative01Test.class).withClasses(Alpha.class)
-                .withBeanLibrary(Bravo.class, Foo.class).withBeanLibrary(Charlie.class, Bar.class, BarProducer.class).build();
-    }
-            -->
-            <class name="org.jboss.cdi.tck.tests.alternative.selection.SelectedAlternative02Test">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.alternative.selection.SelectedAlternative01Test">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
             <class name="org.jboss.cdi.tck.tests.context.dependent.transientreference.DependentTransientReferenceDestroyedTest">
                 <methods>
                     <exclude name="testConstructorAndInitializer"/>

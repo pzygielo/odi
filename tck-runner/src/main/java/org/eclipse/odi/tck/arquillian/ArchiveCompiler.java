@@ -49,10 +49,13 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.jar.JarEntry;
+import java.util.jar.JarInputStream;
 import java.util.stream.Collectors;
 
 /**
@@ -91,37 +94,16 @@ final class ArchiveCompiler {
 
     private void compileWar() throws ArchiveCompilationException, ArchiveCompilerException, IOException {
         List<File> sourceFiles = new ArrayList<>();
-        List<String> deploymentClassNames = new ArrayList<>();
+        Set<String> deploymentClassNames = new LinkedHashSet<>();
         for (Map.Entry<ArchivePath, Node> entry : deploymentArchive.getContent().entrySet()) {
             String path = entry.getKey().get();
             if (path.startsWith("/WEB-INF/classes") && path.endsWith(".class")) {
-                deploymentClassNames.add(path.replace("/WEB-INF/classes/", "")
-                        .replace(".class", "")
-                        .replace('/', '.'));
-                String sourceFile = path.replace("/WEB-INF/classes", "")
-                        .replace(".class", ".java");
-
-                if (sourceFile.contains("$") && !sourceFile.endsWith("$Dollar.java")) {
-                    // skip nested classes
-                    //
-                    // special case for $Dollar, which is the only class in CDI TCK
-                    // whose name actually intentionally contains '$'
-                    //
-                    // this is crude, maybe there's a better way?
-                    continue;
-                }
-
-                Path sourceFilePath = deploymentDir.source.resolve(sourceFile.substring(1)); // sourceFile begins with `/`
-
-                sourceFiles.add(sourceFilePath.toFile());
-
-                Files.createDirectories(sourceFilePath.getParent()); // make sure the directory exists
-                try (InputStream in = ArchiveCompiler.class.getResourceAsStream(sourceFile)) {
-                    if (in == null) {
-                        throw new ArchiveCompilerException("Source file not found: " + sourceFile);
-                    }
-                    Files.copy(in, sourceFilePath);
-                }
+                addSourceFile(
+                        path.replace("/WEB-INF/classes/", ""),
+                        true,
+                        sourceFiles,
+                        deploymentClassNames
+                );
             } else if (path.startsWith("/WEB-INF/lib") && path.endsWith(".jar")) {
                 String jarFile = path.replace("/WEB-INF/lib", "");
                 Path jarFilePath = deploymentDir.lib.resolve(jarFile.substring(1)); // jarFile begins with `/`
@@ -130,11 +112,61 @@ final class ArchiveCompiler {
                 try (InputStream in = entry.getValue().getAsset().openStream()) {
                     Files.copy(in, jarFilePath);
                 }
+                addSourceFilesFromJar(jarFilePath, sourceFiles, deploymentClassNames);
             }
         }
 
         doCompile(sourceFiles, deploymentClassNames, deploymentDir.target.toFile());
         setupCdiProviderService();
+    }
+
+    private void addSourceFilesFromJar(Path jarFilePath,
+                                       List<File> sourceFiles,
+                                       Set<String> deploymentClassNames) throws IOException, ArchiveCompilerException {
+        try (JarInputStream jarInputStream = new JarInputStream(Files.newInputStream(jarFilePath))) {
+            JarEntry jarEntry;
+            while ((jarEntry = jarInputStream.getNextJarEntry()) != null) {
+                if (!jarEntry.isDirectory() && jarEntry.getName().endsWith(".class")) {
+                    addSourceFile(jarEntry.getName(), false, sourceFiles, deploymentClassNames);
+                }
+            }
+        }
+    }
+
+    private void addSourceFile(String classFile,
+                               boolean required,
+                               List<File> sourceFiles,
+                               Set<String> deploymentClassNames) throws IOException, ArchiveCompilerException {
+        String sourceFile = "/" + classFile.replace(".class", ".java");
+        String className = classFile.replace(".class", "").replace('/', '.');
+        if (required) {
+            deploymentClassNames.add(className);
+        }
+        if (sourceFile.contains("$") && !sourceFile.endsWith("$Dollar.java")) {
+            // skip nested classes
+            //
+            // special case for $Dollar, which is the only class in CDI TCK
+            // whose name actually intentionally contains '$'
+            //
+            // this is crude, maybe there's a better way?
+            return;
+        }
+        try (InputStream in = ArchiveCompiler.class.getResourceAsStream(sourceFile)) {
+            if (in == null) {
+                if (required) {
+                    throw new ArchiveCompilerException("Source file not found: " + sourceFile);
+                }
+                return;
+            }
+            if (!required && !deploymentClassNames.add(className)) {
+                return;
+            }
+            Path sourceFilePath = deploymentDir.source.resolve(sourceFile.substring(1)); // sourceFile begins with `/`
+            sourceFiles.add(sourceFilePath.toFile());
+
+            Files.createDirectories(sourceFilePath.getParent()); // make sure the directory exists
+            Files.copy(in, sourceFilePath);
+        }
     }
 
     private void doCompile(Collection<File> testSources,

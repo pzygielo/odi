@@ -29,6 +29,8 @@ import io.micronaut.inject.visitor.VisitorContext;
 import jakarta.enterprise.inject.Produces;
 import org.eclipse.odi.cdi.processor.CdiUtil;
 
+import java.util.Set;
+
 /**
  * Validates elements annotated with {@link jakarta.enterprise.inject.Produces}.
  */
@@ -43,6 +45,11 @@ public class ProducesVisitor implements TypeElementVisitor<Object, Produces> {
     @Override
     public int getOrder() {
         return -100;
+    }
+
+    @Override
+    public Set<String> getSupportedOptions() {
+        return Set.of(CdiUtil.BEAN_CLASSES_OPTION);
     }
 
     @Override

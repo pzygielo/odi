@@ -30,6 +30,7 @@ import io.micronaut.inject.ast.ElementQuery;
 import io.micronaut.inject.ast.FieldElement;
 import io.micronaut.inject.ast.GenericPlaceholderElement;
 import io.micronaut.inject.ast.MethodElement;
+import io.micronaut.inject.ast.MemberElement;
 import io.micronaut.inject.ast.ParameterElement;
 import io.micronaut.inject.ast.TypedElement;
 import io.micronaut.inject.ast.WildcardElement;
@@ -38,6 +39,7 @@ import jakarta.annotation.Priority;
 import jakarta.enterprise.event.Event;
 import jakarta.enterprise.event.Observes;
 import jakarta.enterprise.event.ObservesAsync;
+import jakarta.enterprise.inject.Any;
 import jakarta.enterprise.util.Nonbinding;
 import jakarta.enterprise.inject.Default;
 import jakarta.enterprise.inject.Disposes;
@@ -66,6 +68,8 @@ import java.util.stream.Collectors;
 @Internal
 public final class CdiUtil {
     public static final String SPEC_LOCATION = "https://jakarta.ee/specifications/cdi/3.0/jakarta-cdi-spec-3.0.html";
+    public static final String BEAN_CLASSES_OPTION = "micronaut.cdi.bean.classes";
+    private static final String DEPLOYMENT_EXCEPTION_MARKER = "[ODI_DEPLOYMENT_EXCEPTION] ";
 
     private CdiUtil() {
     }
@@ -510,7 +514,11 @@ public final class CdiUtil {
         }
         visitQualifierDefaults(context, injectPoint);
         visitRequiredType(injectPoint);
-        return CdiUtil.validateInjectedType(context, resolveInjectPointType(injectPoint), injectPoint);
+        ClassElement injectPointType = resolveInjectPointType(injectPoint);
+        if (CdiUtil.validateInjectedType(context, injectPointType, injectPoint)) {
+            return true;
+        }
+        return validateResolvableInjectionPoint(context, injectPointType, injectPoint);
     }
 
     private static void visitRequiredType(TypedElement injectPoint) {
@@ -613,6 +621,144 @@ public final class CdiUtil {
             return true;
         }
         return false;
+    }
+
+    private static boolean validateResolvableInjectionPoint(VisitorContext context,
+                                                            ClassElement injectPointType,
+                                                            TypedElement injectPoint) {
+        if (!isRawGenericType(injectPointType) || !hasOnlyDefaultQualifier(context, injectPoint)) {
+            return false;
+        }
+        Set<ClassElement> candidates = new LinkedHashSet<>();
+        for (ClassElement candidate : candidateBeanClasses(context, injectPointType, injectPoint)) {
+            if (isResolvableBeanClass(context, candidate)
+                    && hasOnlyDefaultQualifier(context, candidate)
+                    && hasBeanTypeAssignableToRawRequiredType(injectPointType, candidate)) {
+                candidates.add(candidate);
+            }
+        }
+        if (candidates.size() > 1) {
+            context.fail(DEPLOYMENT_EXCEPTION_MARKER
+                    + "Ambiguous dependency for injection point of type " + injectPointType.getName()
+                    + ". Candidate beans: " + candidates.stream()
+                    .map(ClassElement::getName)
+                    .sorted()
+                    .collect(Collectors.joining(", ")), injectPoint);
+            return true;
+        }
+        return false;
+    }
+
+    private static Collection<ClassElement> candidateBeanClasses(VisitorContext context,
+                                                                 ClassElement injectPointType,
+                                                                 TypedElement injectPoint) {
+        Set<String> configuredBeanClasses = configuredBeanClasses(context);
+        if (!configuredBeanClasses.isEmpty()) {
+            List<ClassElement> candidates = new ArrayList<>(configuredBeanClasses.size());
+            for (String configuredBeanClass : configuredBeanClasses) {
+                context.getClassElement(configuredBeanClass).ifPresent(candidates::add);
+            }
+            return candidates;
+        }
+        List<ClassElement> candidates = new ArrayList<>();
+        for (String packageName : candidatePackages(injectPointType, injectPoint)) {
+            candidates.addAll(List.of(context.getClassElements(packageName, "*")));
+        }
+        return candidates;
+    }
+
+    private static Set<String> configuredBeanClasses(VisitorContext context) {
+        String classNames = context.getOptions().get(BEAN_CLASSES_OPTION);
+        if (classNames == null || classNames.isBlank()) {
+            return Set.of();
+        }
+        Set<String> beanClasses = new LinkedHashSet<>();
+        for (String className : classNames.split(",")) {
+            String trimmedClassName = className.trim();
+            if (!trimmedClassName.isEmpty()) {
+                beanClasses.add(trimmedClassName);
+            }
+        }
+        return beanClasses;
+    }
+
+    private static Set<String> candidatePackages(ClassElement injectPointType, TypedElement injectPoint) {
+        Set<String> packages = new LinkedHashSet<>();
+        packages.add(injectPointType.getPackageName());
+        if (injectPoint instanceof MemberElement) {
+            packages.add(((MemberElement) injectPoint).getOwningType().getPackageName());
+            packages.add(((MemberElement) injectPoint).getDeclaringType().getPackageName());
+        }
+        return packages;
+    }
+
+    private static boolean isRawGenericType(ClassElement classElement) {
+        return classElement.isRawType()
+                && !classElement.getDeclaredGenericPlaceholders().isEmpty()
+                && classElement.getBoundGenericTypes().isEmpty()
+                && classElement.getName().indexOf('.') > -1
+                && !classElement.getName().equals(Instance.class.getName())
+                && !classElement.getName().equals(Event.class.getName());
+    }
+
+    private static boolean isResolvableBeanClass(VisitorContext context, ClassElement candidate) {
+        return !candidate.isInterface()
+                && !candidate.isAbstract()
+                && !candidate.hasStereotype(Interceptor.class)
+                && !candidate.hasAnnotation(io.micronaut.core.annotation.Vetoed.class)
+                && !candidate.hasAnnotation(jakarta.enterprise.inject.Vetoed.class)
+                && org.eclipse.odi.cdi.processor.AnnotationUtil.hasBeanDefiningAnnotation(candidate)
+                && isBeanClass(candidate);
+    }
+
+    private static boolean hasBeanTypeAssignableToRawRequiredType(ClassElement injectPointType, ClassElement candidate) {
+        Set<ClassElement> beanTypes = new LinkedHashSet<>();
+        collectBeanTypes(candidate, beanTypes);
+        for (ClassElement beanType : beanTypes) {
+            if (injectPointType.getName().equals(beanType.getName()) && isBeanTypeAssignableToRawRequiredType(beanType)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isBeanTypeAssignableToRawRequiredType(ClassElement beanType) {
+        List<ClassElement> typeArguments = resolveTypeArguments(beanType, false);
+        if (typeArguments.isEmpty()) {
+            return true;
+        }
+        for (ClassElement typeArgument : typeArguments) {
+            if (!isObjectType(typeArgument) && !isUnboundedTypeVariable(typeArgument)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean isUnboundedTypeVariable(ClassElement typeArgument) {
+        if (!(typeArgument instanceof GenericPlaceholderElement)) {
+            return false;
+        }
+        GenericPlaceholderElement placeholder = (GenericPlaceholderElement) typeArgument;
+        List<? extends ClassElement> bounds = placeholder.getBounds();
+        return bounds.isEmpty() || (bounds.size() == 1 && isObjectType(bounds.get(0)));
+    }
+
+    private static boolean isObjectType(ClassElement typeArgument) {
+        return Object.class.getName().equals(typeArgument.getName());
+    }
+
+    private static boolean hasOnlyDefaultQualifier(VisitorContext context, Element element) {
+        Set<String> qualifierNames = new LinkedHashSet<>(element.getAnnotationNamesByStereotype(AnnotationUtil.QUALIFIER));
+        for (String annotationName : element.getAnnotationNames()) {
+            if (isQualifierAnnotation(context, annotationName)) {
+                qualifierNames.add(annotationName);
+            }
+        }
+        qualifierNames.remove(Any.class.getName());
+        qualifierNames.remove(Default.class.getName());
+        qualifierNames.remove(jakarta.inject.Named.class.getName());
+        return qualifierNames.isEmpty();
     }
 
     private static boolean isNoGenericType(ClassElement classElement) {

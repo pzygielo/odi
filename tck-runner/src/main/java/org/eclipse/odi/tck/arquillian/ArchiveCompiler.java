@@ -23,6 +23,7 @@ import io.micronaut.annotation.processing.TypeElementVisitorProcessor;
 import io.micronaut.core.io.IOUtils;
 import io.micronaut.core.io.service.SoftServiceLoader;
 import jakarta.enterprise.inject.build.compatible.spi.BuildCompatibleExtension;
+import org.eclipse.odi.cdi.processor.CdiUtil;
 import org.eclipse.odi.cdi.processor.extensions.BuildTimeExtensionRegistry;
 import org.jboss.shrinkwrap.api.Archive;
 import org.jboss.shrinkwrap.api.ArchivePath;
@@ -45,7 +46,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -82,9 +82,13 @@ final class ArchiveCompiler {
 
     private void compileWar() throws ArchiveCompilationException, ArchiveCompilerException, IOException {
         List<File> sourceFiles = new ArrayList<>();
+        List<String> deploymentClassNames = new ArrayList<>();
         for (Map.Entry<ArchivePath, Node> entry : deploymentArchive.getContent().entrySet()) {
             String path = entry.getKey().get();
             if (path.startsWith("/WEB-INF/classes") && path.endsWith(".class")) {
+                deploymentClassNames.add(path.replace("/WEB-INF/classes/", "")
+                        .replace(".class", "")
+                        .replace('/', '.'));
                 String sourceFile = path.replace("/WEB-INF/classes", "")
                         .replace(".class", ".java");
 
@@ -120,11 +124,13 @@ final class ArchiveCompiler {
             }
         }
 
-        doCompile(sourceFiles, deploymentDir.target.toFile());
+        doCompile(sourceFiles, deploymentClassNames, deploymentDir.target.toFile());
         setupCdiProviderService();
     }
 
-    private void doCompile(Collection<File> testSources, File outputDir) throws ArchiveCompilationException, IOException {
+    private void doCompile(Collection<File> testSources,
+                           Collection<String> deploymentClassNames,
+                           File outputDir) throws ArchiveCompilationException, IOException {
         DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         final Map<ArchivePath, Node> extension = deploymentArchive.getContent(object ->
@@ -133,8 +139,9 @@ final class ArchiveCompiler {
         boolean hasBuildExtensions = !extension.isEmpty();
         try (StandardJavaFileManager mgr = compiler.getStandardFileManager(diagnostics, null, null)) {
             final String targetDir = outputDir.getAbsolutePath();
+            List<String> args = new ArrayList<>(compileOptions(targetDir, deploymentClassNames));
             JavaCompiler.CompilationTask task = compiler.getTask(null, mgr, diagnostics,
-                                                                 Arrays.asList("-d", targetDir, "-verbose"), null, mgr.getJavaFileObjectsFromFiles(testSources));
+                                                                 args, null, mgr.getJavaFileObjectsFromFiles(testSources));
             if (hasBuildExtensions) {
                 // run without processors since extensions have to be applied on the compiled code
                 task.setProcessors(Collections.emptyList());
@@ -152,10 +159,7 @@ final class ArchiveCompiler {
                         new BufferedReader(new InputStreamReader(extensionValue.getAsset().openStream()))
                 );
                 String packageName = extensionName.substring(0, extensionName.lastIndexOf('.'));
-                List<String> args = new ArrayList<>();
-                args.add("-d");
-                args.add(targetDir);
-                args.add("-verbose");
+                args = new ArrayList<>(compileOptions(targetDir, deploymentClassNames));
                 if (deploymentArchive.contains("/WEB-INF/beans.xml")) {
                     args.add("-Amicronaut.cdi.bean.packages=" + packageName);
                 }
@@ -189,6 +193,17 @@ final class ArchiveCompiler {
                 }
             }
         }
+    }
+
+    private static List<String> compileOptions(String targetDir, Collection<String> deploymentClassNames) {
+        List<String> args = new ArrayList<>();
+        args.add("-d");
+        args.add(targetDir);
+        args.add("-verbose");
+        if (!deploymentClassNames.isEmpty()) {
+            args.add("-A" + CdiUtil.BEAN_CLASSES_OPTION + "=" + String.join(",", deploymentClassNames));
+        }
+        return args;
     }
 
     private Path setupExtensionCompilation(String extensionName, String packageName) throws IOException {

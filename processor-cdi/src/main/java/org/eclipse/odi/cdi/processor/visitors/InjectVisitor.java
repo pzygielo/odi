@@ -46,6 +46,11 @@ public class InjectVisitor implements TypeElementVisitor<Object, Object> {
     }
 
     @Override
+    public Set<String> getSupportedOptions() {
+        return Collections.singleton(CdiUtil.BEAN_CLASSES_OPTION);
+    }
+
+    @Override
     public int getOrder() {
         // TODO: Should be after all visitors that can make a class injectable
         return TypeElementVisitor.super.getOrder();

@@ -122,7 +122,7 @@ public final class BuildTimeExtensionVisitor implements TypeElementVisitor<Objec
 
     @Override
     public Set<String> getSupportedOptions() {
-        return Collections.singleton("micronaut.cdi.bean.packages");
+        return Set.of("micronaut.cdi.bean.packages", CdiUtil.BEAN_CLASSES_OPTION);
     }
 
     private Set<String> resolveBeanPackages(VisitorContext visitorContext) {

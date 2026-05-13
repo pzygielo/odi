@@ -86,4 +86,26 @@ class Test {
 }
 ''')
     }
+
+    void "test that initializer methods cannot be generic"() {
+        when:
+        buildBeanDefinition('ctortest.Test', '''
+package ctortest;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.inject.Inject;
+import java.util.List;
+
+@Dependent
+class Test {
+    @Inject
+    <T> void init(List<T> values) {
+    }
+}
+''')
+
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains("Initializer methods must not be generic")
+    }
 }

@@ -104,6 +104,10 @@ public class InjectVisitor implements TypeElementVisitor<Object, Object> {
         if (CdiUtil.validateMethodExtraAnnotations(context, Inject.class, element)) {
             return;
         }
+        if (!(element instanceof ConstructorElement) && !element.getDeclaredTypeVariables().isEmpty()) {
+            context.fail("Initializer methods must not be generic", element);
+            return;
+        }
         for (ParameterElement parameter : element.getParameters()) {
             if (CdiUtil.validateMethodNoSpecialParameters(context, "Inject", element, parameter)) {
                 return;

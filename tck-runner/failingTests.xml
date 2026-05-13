@@ -191,11 +191,6 @@
                     <exclude name=".*"/>
                 </methods>
             </class>
-            <class name="org.jboss.cdi.tck.tests.implementation.initializer.broken.generic.GenericInitializerMethodTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
             <!-- Cannot compile -->
             <class name="org.jboss.cdi.tck.tests.inheritance.generics.MemberLevelInheritanceTest">
                 <methods>

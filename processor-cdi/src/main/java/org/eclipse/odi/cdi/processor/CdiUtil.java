@@ -47,6 +47,7 @@ import jakarta.enterprise.inject.Disposes;
 import jakarta.enterprise.inject.Instance;
 import jakarta.enterprise.inject.Produces;
 import jakarta.enterprise.inject.Stereotype;
+import jakarta.enterprise.inject.spi.Bean;
 import jakarta.enterprise.inject.spi.InjectionPoint;
 import jakarta.inject.Inject;
 import jakarta.interceptor.Interceptor;
@@ -626,6 +627,10 @@ public final class CdiUtil {
             context.fail("EventMetadata may only be injected into observer method parameters", owningElement);
             return true;
         }
+        if (Bean.class.getName().equals(classElement.getName())
+                && validateBeanMetadataTypeParameter(context, classElement, owningElement)) {
+            return true;
+        }
         if (classElement.getName().equals(Instance.class.getName()) && isNoGenericType(classElement)) {
             context.fail("jakarta.enterprise.inject.Instance must have a required type parameter specified", owningElement);
             return true;
@@ -635,6 +640,51 @@ public final class CdiUtil {
             return true;
         }
         return false;
+    }
+
+    private static boolean validateBeanMetadataTypeParameter(VisitorContext context,
+                                                             ClassElement beanMetadataType,
+                                                             Element owningElement) {
+        List<ClassElement> typeArguments = resolvedTypeArguments(beanMetadataType);
+        if (typeArguments.isEmpty()) {
+            return false;
+        }
+        ClassElement metadataBeanType = typeArguments.get(0);
+        if (metadataBeanType instanceof WildcardElement || metadataBeanType.isWildcard() || isObjectType(metadataBeanType)) {
+            return false;
+        }
+        ClassElement contextualBeanType = resolveContextualBeanType(owningElement);
+        if (contextualBeanType != null && !metadataBeanType.isAssignable(contextualBeanType)) {
+            context.fail("Bean metadata type parameter must be assignable from the declaring bean type", owningElement);
+            return true;
+        }
+        return false;
+    }
+
+    private static ClassElement resolveContextualBeanType(Element owningElement) {
+        if (owningElement instanceof FieldElement) {
+            return ((FieldElement) owningElement).getOwningType();
+        }
+        if (owningElement instanceof ParameterElement) {
+            try {
+                MethodElement methodElement = ((ParameterElement) owningElement).getMethodElement();
+                if (methodElement.hasDeclaredAnnotation(Produces.class)) {
+                    return methodElement.getGenericReturnType();
+                }
+                for (ParameterElement parameter : methodElement.getParameters()) {
+                    if (parameter.hasDeclaredAnnotation(Disposes.class)) {
+                        return parameter.getGenericType();
+                    }
+                }
+                return methodElement.getOwningType();
+            } catch (IllegalStateException e) {
+                return null;
+            }
+        }
+        if (owningElement instanceof MemberElement) {
+            return ((MemberElement) owningElement).getOwningType();
+        }
+        return null;
     }
 
     private static boolean isObserverMethodParameter(Element element) {

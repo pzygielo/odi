@@ -134,7 +134,7 @@ public class ClassStereotypeValidator implements TypeElementVisitor<Object, Ster
     }
 
     private List<String> validateScopes(Element element, VisitorContext context, List<String> stereotypes) {
-        final List<String> scopes = resolveDeclaredScopes(element, stereotypes);
+        final List<String> scopes = resolveDeclaredScopes(element, context, stereotypes);
         if (scopes.size() > 1) {
             Optional<String> selectedScope = resolveSelectedScope(element, context, scopes, stereotypes);
             if (selectedScope.isPresent()) {
@@ -158,7 +158,7 @@ public class ClassStereotypeValidator implements TypeElementVisitor<Object, Ster
                                                         VisitorContext context,
                                                         List<String> scopes,
                                                         List<String> stereotypes) {
-        Optional<String> declaredScope = resolveDirectScope(element);
+        Optional<String> declaredScope = resolveDirectScope(element, context);
         if (declaredScope.isPresent()) {
             return declaredScope;
         }
@@ -179,12 +179,12 @@ public class ClassStereotypeValidator implements TypeElementVisitor<Object, Ster
         Optional<ClassElement> superType = element.getSuperType();
         while (superType.isPresent()) {
             ClassElement type = superType.get();
-            Optional<String> declaredScope = resolveDirectScope(type);
+            Optional<String> declaredScope = resolveDirectScope(type, context);
             if (declaredScope.isPresent()) {
                 return declaredScope;
             }
             List<String> stereotypes = type.getAnnotationNamesByStereotype(Stereotype.class);
-            List<String> scopes = resolveDeclaredScopes(type, stereotypes);
+            List<String> scopes = resolveDeclaredScopes(type, context, stereotypes);
             Set<String> stereotypeScopes = collectStereotypeScopes(context, stereotypes);
             Optional<String> inheritedClassScope = scopes.stream()
                     .filter(scope -> !stereotypeScopes.contains(scope))
@@ -211,19 +211,23 @@ public class ClassStereotypeValidator implements TypeElementVisitor<Object, Ster
         return scopes;
     }
 
-    private static Optional<String> resolveDirectScope(Element element) {
+    private static Optional<String> resolveDirectScope(Element element, VisitorContext context) {
+        List<String> declaredScopes = resolveDirectScopes(element, context);
+        return declaredScopes.stream().findFirst();
+    }
+
+    private static List<String> resolveDirectScopes(Element element, VisitorContext context) {
         AnnotationMetadata annotationMetadata = element.getAnnotationMetadata();
         if (annotationMetadata == AnnotationMetadata.EMPTY_METADATA) {
-            return Optional.empty();
+            return Collections.emptyList();
         }
-        List<String> declaredAnnotations = new ArrayList<>(annotationMetadata.getDeclaredAnnotationNames());
-        List<String> stereotypes = element.getAnnotationNamesByStereotype(Stereotype.class);
-        List<String> declaredScopes =
-                new ArrayList<>(annotationMetadata.getDeclaredAnnotationNamesByStereotype(io.micronaut.core.annotation.AnnotationUtil.SCOPE));
-        purgeInternalScopes(stereotypes, declaredScopes);
-        return declaredScopes.stream()
-                .filter(declaredAnnotations::contains)
-                .findFirst();
+        List<String> declaredScopes = new ArrayList<>();
+        for (String annotationName : annotationMetadata.getDeclaredAnnotationNames()) {
+            if (CdiUtil.isScopeAnnotation(context, annotationName)) {
+                declaredScopes.add(annotationName);
+            }
+        }
+        return declaredScopes;
     }
 
     private void validateQualifiers(Element element, VisitorContext context, List<String> stereotypes) {
@@ -256,7 +260,8 @@ public class ClassStereotypeValidator implements TypeElementVisitor<Object, Ster
         return VisitorKind.ISOLATING;
     }
 
-    private static List<String> resolveDeclaredScopes(AnnotationMetadata annotationMetadata, List<String> stereotypes) {
+    private static List<String> resolveDeclaredScopes(Element element, VisitorContext context, List<String> stereotypes) {
+        AnnotationMetadata annotationMetadata = element.getAnnotationMetadata();
         if (annotationMetadata == AnnotationMetadata.EMPTY_METADATA) {
             return Collections.emptyList();
         }
@@ -264,12 +269,68 @@ public class ClassStereotypeValidator implements TypeElementVisitor<Object, Ster
                 new ArrayList<>(annotationMetadata.getDeclaredAnnotationNamesByStereotype(io.micronaut.core.annotation.AnnotationUtil.SCOPE));
 
         purgeInternalScopes(stereotypes, scopeStereotypes);
-        String n = null;
+        if (element instanceof ClassElement && resolveDirectScopes(element, context).isEmpty()) {
+            removeBlockedInheritedScopes(
+                    (ClassElement) element,
+                    context,
+                    scopeStereotypes,
+                    collectStereotypeScopes(context, stereotypes)
+            );
+        }
         if (scopeStereotypes.isEmpty()) {
             scopeStereotypes.addAll(annotationMetadata.getAnnotationNamesByStereotype(io.micronaut.core.annotation.AnnotationUtil.SCOPE));
             purgeInternalScopes(stereotypes, scopeStereotypes);
+            if (element instanceof ClassElement) {
+                removeBlockedInheritedScopes(
+                        (ClassElement) element,
+                        context,
+                        scopeStereotypes,
+                        collectStereotypeScopes(context, stereotypes)
+                );
+            }
         }
         return scopeStereotypes;
+    }
+
+    private static void removeBlockedInheritedScopes(ClassElement element,
+                                                     VisitorContext context,
+                                                     List<String> inheritedScopes,
+                                                     Set<String> currentStereotypeScopes) {
+        if (inheritedScopes.isEmpty()) {
+            return;
+        }
+        Set<String> blockedScopes = findBlockedInheritedScopes(element, context);
+        blockedScopes.removeAll(currentStereotypeScopes);
+        if (blockedScopes.isEmpty()) {
+            return;
+        }
+        inheritedScopes.removeAll(blockedScopes);
+        element.removeAnnotationIf(annotation -> blockedScopes.contains(annotation.getAnnotationName()));
+    }
+
+    private static Set<String> findBlockedInheritedScopes(ClassElement element, VisitorContext context) {
+        Optional<ClassElement> superType = element.getSuperType();
+        while (superType.isPresent()) {
+            ClassElement type = superType.get();
+            List<String> declaredScopes = resolveDirectScopes(type, context);
+            if (!declaredScopes.isEmpty()) {
+                Set<String> nearestScopes = new HashSet<>(declaredScopes);
+                Set<String> blockedScopes = new LinkedHashSet<>();
+                Optional<ClassElement> ancestorType = type.getSuperType();
+                while (ancestorType.isPresent()) {
+                    ClassElement ancestor = ancestorType.get();
+                    for (String ancestorScope : resolveDirectScopes(ancestor, context)) {
+                        if (!nearestScopes.contains(ancestorScope)) {
+                            blockedScopes.add(ancestorScope);
+                        }
+                    }
+                    ancestorType = ancestor.getSuperType();
+                }
+                return blockedScopes;
+            }
+            superType = type.getSuperType();
+        }
+        return Collections.emptySet();
     }
 
     private static void purgeInternalScopes(List<String> stereotypes, List<String> scopeStereotypes) {

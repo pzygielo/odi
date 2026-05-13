@@ -151,4 +151,46 @@ class ShortHairedDog {
         definition.getScope().get() == jakarta.enterprise.context.ApplicationScoped
     }
 
+    void 'test non inherited intermediate scope blocks inherited superclass scope'() {
+        when:
+        def definition = buildBeanDefinition('stype.GoldenLabrador', '''
+package stype;
+
+import java.lang.annotation.*;
+import static java.lang.annotation.ElementType.*;
+import static java.lang.annotation.RetentionPolicy.*;
+import jakarta.enterprise.context.NormalScope;
+import jakarta.enterprise.context.RequestScoped;
+import jakarta.enterprise.inject.Stereotype;
+
+@DummyStereotype
+class GoldenLabrador extends Labrador {
+}
+
+@NotInheritedScope
+class Labrador extends Dog {
+}
+
+@RequestScoped
+class Dog {
+}
+
+@Stereotype
+@Target({ TYPE })
+@Retention(RUNTIME)
+@interface DummyStereotype {
+}
+
+@NormalScope
+@Target({ TYPE, METHOD, FIELD })
+@Retention(RUNTIME)
+@interface NotInheritedScope {
+}
+''')
+
+        then:
+        definition != null
+        definition.getScope().get() == jakarta.enterprise.context.Dependent
+    }
+
 }

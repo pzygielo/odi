@@ -71,12 +71,6 @@
                     <exclude name="testInterceptorInstanceCreatedWhenTargetInstanceCreated"/>
                 </methods>
             </class>
-            <!-- Scopes inheritance -->
-            <class name="org.jboss.cdi.tck.tests.definition.scope.ScopeDefinitionTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
             <class name="org.jboss.cdi.tck.tests.event.resolve.typeWithParameters.CheckTypeParametersWhenResolvingObserversTest">
                 <methods>
                     <exclude name="testEventTypeResolution"/>

@@ -823,7 +823,7 @@ public final class CdiUtil {
         return false;
     }
 
-    private static boolean isScopeAnnotation(VisitorContext context, String annotationName) {
+    static boolean isScopeAnnotation(VisitorContext context, String annotationName) {
         if (annotationName.equals(jakarta.enterprise.context.Dependent.class.getName())) {
             return true;
         }

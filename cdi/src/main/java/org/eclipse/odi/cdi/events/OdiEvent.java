@@ -143,7 +143,7 @@ final class OdiEvent<T> implements Event<T>, OdiEventMetadata {
 
     @Override
     public <U extends T> Event<U> select(TypeLiteral<U> subtype, Annotation... qualifiers) {
-        Argument<U> argument = (Argument<U>) Argument.of(subtype.getType());
+        Argument<U> argument = OdiEventFactory.argumentOf(subtype.getType());
         return select(argument, subtype.getType(), qualifiers);
     }
 

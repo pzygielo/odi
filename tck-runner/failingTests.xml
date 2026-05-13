@@ -120,11 +120,6 @@
                     <exclude name=".*"/>
                 </methods>
             </class>
-            <class name="org.jboss.cdi.tck.tests.event.observer.wildcardAndTypeVariable.ObserverMethodWithParametertizedTypeTest">
-                <methods>
-                    <exclude name="testObserverMethodCanObserveArrayWildcard"/>
-                </methods>
-            </class>
             <class name="org.jboss.cdi.tck.tests.event.observer.broken.validation.ambiguous.ObserverMethodParameterInjectionValidationTest">
                 <methods>
                     <exclude name=".*"/>

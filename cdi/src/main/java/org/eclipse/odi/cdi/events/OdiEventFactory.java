@@ -36,7 +36,11 @@ import jakarta.enterprise.event.NotificationOptions;
 import jakarta.enterprise.util.TypeLiteral;
 
 import java.lang.annotation.Annotation;
+import java.lang.reflect.Array;
+import java.lang.reflect.GenericArrayType;
+import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.lang.reflect.TypeVariable;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ForkJoinPool;
@@ -153,7 +157,7 @@ public final class OdiEventFactory {
             @Override
             public <U> Event<U> select(TypeLiteral<U> subtype, Annotation... qualifiers) {
                 return (Event<U>) getTypedEvent(
-                        Argument.of(subtype.getType()),
+                        argumentOf(subtype.getType()),
                         subtype.getType(),
                         qualifiers,
                         injectionPoint
@@ -205,6 +209,39 @@ public final class OdiEventFactory {
                 observerMethodRegistry,
                 executorSupplier
         );
+    }
+
+    @SuppressWarnings("unchecked")
+    static <T> Argument<T> argumentOf(Type type) {
+        if (type instanceof GenericArrayType) {
+            Class<?> rawArrayType = rawArrayType((GenericArrayType) type);
+            return (Argument<T>) Argument.of(rawArrayType);
+        }
+        return (Argument<T>) Argument.of(type);
+    }
+
+    private static Class<?> rawArrayType(GenericArrayType type) {
+        Class<?> componentType = rawType(type.getGenericComponentType());
+        return Array.newInstance(componentType, 0).getClass();
+    }
+
+    private static Class<?> rawType(Type type) {
+        if (type instanceof Class<?>) {
+            return (Class<?>) type;
+        }
+        if (type instanceof ParameterizedType) {
+            Type rawType = ((ParameterizedType) type).getRawType();
+            if (rawType instanceof Class<?>) {
+                return (Class<?>) rawType;
+            }
+        }
+        if (type instanceof GenericArrayType) {
+            return rawArrayType((GenericArrayType) type);
+        }
+        if (type instanceof TypeVariable<?>) {
+            return Object.class;
+        }
+        throw new IllegalArgumentException("Type [" + type + "] must have a raw class");
     }
 
 }

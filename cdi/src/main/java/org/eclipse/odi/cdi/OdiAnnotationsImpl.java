@@ -32,8 +32,10 @@ import java.lang.annotation.Annotation;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @SuppressWarnings("CdiManagedBeanInconsistencyInspection")
 @Singleton
@@ -135,9 +137,9 @@ final class OdiAnnotationsImpl implements OdiAnnotations {
                             MetaAnnotationSupport.META_ANNOTATION_QUALIFIER, Collections.emptyMap()
                     );
                 } else {
-                    String[] nonBinding = metaAnnotations.get().getQualifierNonBinding(annotation).toArray(new String[0]);
                     AnnotationValue<Annotation> value = AnnotationReflection.toAnnotationValue(annotation);
                     String annotationName = value.getAnnotationName();
+                    String[] nonBinding = nonBindingMembers(annotation, value);
                     final Map<CharSequence, Object> values = new LinkedHashMap<>(value.getValues());
                     if (qualifierCounts.getOrDefault(annotationName, 0) > 1) {
                         String repeatableContainer = annotationMetadata.findRepeatableAnnotation(annotationName).orElse(null);
@@ -159,6 +161,15 @@ final class OdiAnnotationsImpl implements OdiAnnotations {
             }
         }
         return annotationMetadata;
+    }
+
+    private String[] nonBindingMembers(Annotation annotation, AnnotationValue<Annotation> value) {
+        Set<String> nonBinding = new LinkedHashSet<>(metaAnnotations.get().getQualifierNonBinding(annotation));
+        Collections.addAll(nonBinding, value.stringValues(AnnotationUtil.NON_BINDING_ATTRIBUTE));
+        if (!nonBinding.isEmpty()) {
+            nonBinding.add(AnnotationUtil.NON_BINDING_ATTRIBUTE);
+        }
+        return nonBinding.toArray(String[]::new);
     }
 
     private Map<String, Integer> qualifierCounts(Annotation[] annotations) {

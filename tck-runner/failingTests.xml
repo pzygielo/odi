@@ -541,12 +541,6 @@
                     <exclude name=".*"/>
                 </methods>
             </class>
-            <class name="org.jboss.cdi.tck.tests.lookup.typesafe.resolution.ResolutionByTypeTest">
-                <methods>
-                    <exclude name="testResolveByTypeWithNonBindingMembers"/>
-                    <exclude name="testResolveByTypeWithPrimitives"/>
-                </methods>
-            </class>
             <class name="org.jboss.cdi.tck.tests.lookup.typesafe.resolution.primitive.PrimitiveInjectionPointTest">
                 <methods>
                     <exclude name=".*"/>

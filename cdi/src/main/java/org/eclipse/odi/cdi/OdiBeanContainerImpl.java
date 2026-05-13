@@ -25,6 +25,7 @@ import io.micronaut.core.annotation.AnnotationMetadata;
 import io.micronaut.core.annotation.AnnotationUtil;
 import io.micronaut.core.annotation.AnnotationValue;
 import io.micronaut.core.annotation.Order;
+import io.micronaut.core.reflect.ReflectionUtils;
 import io.micronaut.core.type.Argument;
 import io.micronaut.inject.BeanDefinition;
 import io.micronaut.inject.ExecutableMethod;
@@ -175,27 +176,39 @@ final class OdiBeanContainerImpl implements OdiBeanContainer {
         if (qualifier == null) {
             qualifier = DefaultQualifier.instance();
         }
+        Collection<BeanDefinition<T>> beanDefinitions = findBeanDefinitions(argument, qualifier);
+        Class<?> primitiveType = ReflectionUtils.getPrimitiveType(argument.getType());
+        Class<?> wrapperType = argument.getWrapperType();
+        if (primitiveType != argument.getType()) {
+            return mergeBeanDefinitions(beanDefinitions, findBeanDefinitions((Argument<T>) Argument.of(primitiveType), qualifier));
+        }
+        if (wrapperType != argument.getType()) {
+            return mergeBeanDefinitions(beanDefinitions, findBeanDefinitions((Argument<T>) Argument.of(wrapperType), qualifier));
+        }
+        return beanDefinitions;
+    }
+
+    private <T> Collection<BeanDefinition<T>> findBeanDefinitions(Argument<T> argument, io.micronaut.context.Qualifier<T> qualifier) {
         Collection<BeanDefinition<T>> beanDefinitions = applicationContext.getBeanDefinitions(argument, qualifier);
         if (qualifier instanceof DefaultQualifier) {
-            beanDefinitions = beanDefinitions.stream()
+            return beanDefinitions.stream()
                     .filter(DefaultQualifier::hasDefaultQualifier)
                     .collect(Collectors.toList());
         }
-        Class<?> primitiveType = toPrimitiveType(argument.getType());
-        if (beanDefinitions.isEmpty() && primitiveType != argument.getType()) {
-            @SuppressWarnings({"unchecked", "rawtypes"})
-            Collection<BeanDefinition<T>> primitiveBeanDefinitions = (Collection) applicationContext.getBeanDefinitions(
-                    (Argument) Argument.of(primitiveType),
-                    (io.micronaut.context.Qualifier) qualifier
-            );
-            if (qualifier instanceof DefaultQualifier) {
-                primitiveBeanDefinitions = primitiveBeanDefinitions.stream()
-                        .filter(DefaultQualifier::hasDefaultQualifier)
-                        .collect(Collectors.toList());
-            }
-            return primitiveBeanDefinitions;
-        }
         return beanDefinitions;
+    }
+
+    private static <T> Collection<BeanDefinition<T>> mergeBeanDefinitions(Collection<BeanDefinition<T>> first,
+                                                                          Collection<BeanDefinition<T>> second) {
+        if (first.isEmpty()) {
+            return second;
+        }
+        if (second.isEmpty()) {
+            return first;
+        }
+        Set<BeanDefinition<T>> merged = new LinkedHashSet<>(first);
+        merged.addAll(second);
+        return merged;
     }
 
     private <T> Collection<BeanDefinition<T>> resolveBeanDefinitions(Collection<BeanDefinition<T>> beanDefinitions) {
@@ -258,7 +271,7 @@ final class OdiBeanContainerImpl implements OdiBeanContainer {
             if (instance == null) {
                 return null;
             }
-            if (!((Class<?>) beanType).isInstance(instance)) {
+            if (!isReferenceInstance((Class<?>) beanType, instance)) {
                 throw new IllegalArgumentException("Invalid instance!");
             }
             return instance;
@@ -566,7 +579,8 @@ final class OdiBeanContainerImpl implements OdiBeanContainer {
             return false;
         }
         if (requiredType instanceof Class<?>) {
-            return ((Class<?>) requiredType).getTypeParameters().length > 0;
+            return ((Class<?>) requiredType).getTypeParameters().length > 0
+                    || isPrimitiveOrWrapper((Class<?>) requiredType);
         }
         return requiredType instanceof ParameterizedType;
     }
@@ -832,6 +846,9 @@ final class OdiBeanContainerImpl implements OdiBeanContainer {
         if (Objects.equals(left, right)) {
             return true;
         }
+        if (left instanceof Class<?> && right instanceof Class<?>) {
+            return arePrimitiveWrapperEquivalent((Class<?>) left, (Class<?>) right);
+        }
         if (left instanceof ParameterizedType && right instanceof ParameterizedType) {
             ParameterizedType leftParameterized = (ParameterizedType) left;
             ParameterizedType rightParameterized = (ParameterizedType) right;
@@ -926,32 +943,22 @@ final class OdiBeanContainerImpl implements OdiBeanContainer {
         return null;
     }
 
-    private static Class<?> toPrimitiveType(Class<?> type) {
-        if (type == Boolean.class) {
-            return boolean.class;
+    private static boolean isPrimitiveOrWrapper(Class<?> type) {
+        return type.isPrimitive() || ReflectionUtils.getPrimitiveType(type) != type;
+    }
+
+    private static boolean arePrimitiveWrapperEquivalent(Class<?> left, Class<?> right) {
+        if (!isPrimitiveOrWrapper(left) && !isPrimitiveOrWrapper(right)) {
+            return false;
         }
-        if (type == Byte.class) {
-            return byte.class;
+        return ReflectionUtils.getPrimitiveType(left).equals(ReflectionUtils.getPrimitiveType(right));
+    }
+
+    private static boolean isReferenceInstance(Class<?> beanType, Object instance) {
+        if (beanType.isPrimitive()) {
+            return ReflectionUtils.getWrapperType(beanType).isInstance(instance);
         }
-        if (type == Character.class) {
-            return char.class;
-        }
-        if (type == Double.class) {
-            return double.class;
-        }
-        if (type == Float.class) {
-            return float.class;
-        }
-        if (type == Integer.class) {
-            return int.class;
-        }
-        if (type == Long.class) {
-            return long.class;
-        }
-        if (type == Short.class) {
-            return short.class;
-        }
-        return type;
+        return beanType.isInstance(instance);
     }
 
     private static void validateQualifiers(String message, Set<Annotation> qualifiers) {

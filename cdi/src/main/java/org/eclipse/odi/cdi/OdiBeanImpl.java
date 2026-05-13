@@ -116,12 +116,13 @@ public class OdiBeanImpl<T> implements OdiBean<T>, Prioritized {
 
     @Override
     public Set<InjectionPoint> getInjectionPoints() {
+        BeanDefinition<?> injectionPointDefinition = getInjectionPointDefinition();
         @SuppressWarnings("rawtypes")
         Stream<? extends io.micronaut.inject.InjectionPoint> injectionPoints =
-                Stream.concat(definition.getInjectedFields().stream(), definition.getInjectedMethods().stream());
+                Stream.concat(injectionPointDefinition.getInjectedFields().stream(), injectionPointDefinition.getInjectedMethods().stream());
         injectionPoints = Stream.concat(
                 injectionPoints,
-                Stream.of(definition.getConstructor())
+                Stream.of(injectionPointDefinition.getConstructor())
         );
         return injectionPoints.flatMap((ip) -> {
             if (ip instanceof FieldInjectionPoint) {
@@ -135,6 +136,17 @@ public class OdiBeanImpl<T> implements OdiBean<T>, Prioritized {
             }
             return Stream.empty();
         }).collect(Collectors.toSet());
+    }
+
+    private BeanDefinition<?> getInjectionPointDefinition() {
+        if (definition instanceof ProxyBeanDefinition) {
+            ProxyBeanDefinition<?> proxyBeanDefinition = (ProxyBeanDefinition<?>) definition;
+            return beanContext.getProxyTargetBeanDefinition(
+                    (Class) proxyBeanDefinition.getTargetType(),
+                    definition.getDeclaredQualifier()
+            );
+        }
+        return definition;
     }
 
     @Override

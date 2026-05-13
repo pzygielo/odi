@@ -27,6 +27,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -51,7 +52,10 @@ class OdiAnnotatedMethod<T> extends OdiAnnotated implements AnnotatedMethod<T> {
 
     @Override
     public Method getJavaMember() {
-        return ReflectionUtils.getRequiredMethod((Class) type, methodName, parameterTypes);
+        Class<?> declaringType = (Class<?>) type;
+        return ReflectionUtils.findMethod(declaringType, methodName, parameterTypes)
+                .or(() -> findCompatibleMethod(declaringType))
+                .orElseThrow(() -> ReflectionUtils.newNoSuchMethodError(declaringType, methodName, parameterTypes));
     }
 
     @Override
@@ -72,5 +76,31 @@ class OdiAnnotatedMethod<T> extends OdiAnnotated implements AnnotatedMethod<T> {
             parameters.add(new OdiAnnotatedParameter<>(classLoader, argument.getType(), Set.of(argument.getType()), argument.getAnnotationMetadata(), i, this));
         }
         return parameters;
+    }
+
+    private Optional<Method> findCompatibleMethod(Class<?> declaringType) {
+        Class<?> currentType = declaringType;
+        while (currentType != null) {
+            Method[] methods = currentType.isInterface() ? currentType.getMethods() : currentType.getDeclaredMethods();
+            for (Method method : methods) {
+                if (methodName.equals(method.getName()) && matchesParameters(method.getParameterTypes())) {
+                    return Optional.of(method);
+                }
+            }
+            currentType = currentType.getSuperclass();
+        }
+        return Optional.empty();
+    }
+
+    private boolean matchesParameters(Class<?>[] actualParameterTypes) {
+        if (actualParameterTypes.length != parameterTypes.length) {
+            return false;
+        }
+        for (int i = 0; i < actualParameterTypes.length; i++) {
+            if (!actualParameterTypes[i].isAssignableFrom(parameterTypes[i])) {
+                return false;
+            }
+        }
+        return true;
     }
 }

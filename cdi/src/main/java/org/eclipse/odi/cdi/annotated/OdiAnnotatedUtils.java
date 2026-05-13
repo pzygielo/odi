@@ -24,6 +24,7 @@ import io.micronaut.inject.CallableInjectionPoint;
 import io.micronaut.inject.ConstructorInjectionPoint;
 import io.micronaut.inject.FieldInjectionPoint;
 import io.micronaut.inject.InjectionPoint;
+import io.micronaut.inject.MethodInjectionPoint;
 import jakarta.enterprise.inject.spi.Annotated;
 
 import java.lang.reflect.Type;
@@ -36,7 +37,8 @@ import java.util.Set;
 @Internal
 public final class OdiAnnotatedUtils {
 
-    public static Annotated asAnnotated(ClassLoader classLoader, InjectionPoint<?> injectionPoint, Type type) {
+    public static Annotated asAnnotated(ClassLoader classLoader, InjectionPoint<?> injectionPoint, Argument<?> argument) {
+        Type type = argument.asType();
         if (injectionPoint instanceof AbstractBeanResolutionContext.FieldSegment) {
             AbstractBeanResolutionContext.FieldSegment fieldSegment = (AbstractBeanResolutionContext.FieldSegment) injectionPoint;
             return new OdiAnnotatedField<>(classLoader, injectionPoint.getDeclaringBean().getBeanType(),
@@ -71,6 +73,16 @@ public final class OdiAnnotatedUtils {
             AbstractBeanResolutionContext.MethodSegment methodSegment = (AbstractBeanResolutionContext.MethodSegment) injectionPoint;
             return asAnnotatedMethod(classLoader, injectionPoint, type, methodSegment);
         }
+        if (injectionPoint instanceof MethodInjectionPoint) {
+            MethodInjectionPoint<?, ?> methodInjectionPoint = (MethodInjectionPoint<?, ?>) injectionPoint;
+            return asAnnotatedParameter(classLoader,
+                    methodInjectionPoint.getDeclaringType(),
+                    type,
+                    injectionPoint.getAnnotationMetadata(),
+                    methodInjectionPoint.getName(),
+                    methodInjectionPoint.getArguments(),
+                    argument);
+        }
         if (injectionPoint instanceof ArgumentInjectionPoint) {
             CallableInjectionPoint<?> outerInjectionPoint = ((ArgumentInjectionPoint<?, ?>) injectionPoint).getOuterInjectionPoint();
             if (outerInjectionPoint instanceof ConstructorInjectionPoint) {
@@ -103,6 +115,37 @@ public final class OdiAnnotatedUtils {
             }
         }
         return new OdiAnnotated(classLoader, type, Set.of(type), injectionPoint.getAnnotationMetadata());
+    }
+
+    private static OdiAnnotatedParameter<Object> asAnnotatedParameter(ClassLoader classLoader,
+                                                                     Type declaringType,
+                                                                     Type type,
+                                                                     io.micronaut.core.annotation.AnnotationMetadata annotationMetadata,
+                                                                     String methodName,
+                                                                     Argument<?>[] arguments,
+                                                                     Argument<?> argument) {
+        int indexOf = -1;
+        for (int i = 0; i < arguments.length; i++) {
+            if (arguments[i].equals(argument)) {
+                indexOf = i;
+                break;
+            }
+        }
+        OdiAnnotatedMethod<Object> annotatedMethod = new OdiAnnotatedMethod<>(classLoader,
+                declaringType,
+                Set.of(type),
+                annotationMetadata,
+                methodName,
+                Arrays.stream(arguments).map(TypeInformation::getType).toArray(Class[]::new),
+                arguments
+        );
+        return new OdiAnnotatedParameter<>(classLoader,
+                type,
+                Set.of(type),
+                argument.getAnnotationMetadata(),
+                indexOf,
+                annotatedMethod
+        );
     }
 
     private static OdiAnnotatedMethod<Object> asAnnotatedMethod(ClassLoader classLoader,

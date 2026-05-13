@@ -100,7 +100,7 @@ final class OdiInjectionPoint implements InjectionPoint {
 
     @Override
     public Annotated getAnnotated() {
-        return OdiAnnotatedUtils.asAnnotated(classLoader, injectionPoint, getType());
+        return OdiAnnotatedUtils.asAnnotated(classLoader, injectionPoint, argument);
     }
 
     @Override

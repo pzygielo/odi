@@ -48,14 +48,6 @@
                     <exclude name=".*"/>
                 </methods>
             </class>
-            <!-- Cannot compile -->
-            <class name="org.jboss.cdi.tck.tests.inheritance.generics.MemberLevelInheritanceTest">
-                <methods>
-                    <exclude name="testInjectionPointDefinition"/>
-                    <exclude name="testObserver"/>
-                    <exclude name="testObserverResolution"/>
-                </methods>
-            </class>
             <class name="org.jboss.cdi.tck.tests.interceptors.invocation.InterceptorInvocationTest">
                 <methods>
                     <!-- Not supported in CDI lite -->

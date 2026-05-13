@@ -32,6 +32,7 @@ import io.micronaut.core.util.ArrayUtils;
 import io.micronaut.core.util.CollectionUtils;
 import io.micronaut.inject.ast.ClassElement;
 import io.micronaut.inject.ast.Element;
+import io.micronaut.inject.ast.ElementQuery;
 import io.micronaut.inject.ast.MethodElement;
 import io.micronaut.inject.ast.ParameterElement;
 import io.micronaut.inject.ast.beans.BeanElement;
@@ -73,7 +74,6 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -247,7 +247,7 @@ public class BuildTimeExtensionRegistry implements LifeCycle<BuildTimeExtensionR
                 final Class<?>[] types = enhancement.types();
                 for (Class<?> type : types) {
                     if (type.getName().equals(typeToEnhance.getName()) || (includeSubtypes && typeToEnhance.isAssignable(type))) {
-                        if (ArrayUtils.isEmpty(aw) || (aw.length == 0 || Arrays.stream(aw).anyMatch(typeToEnhance::hasAnnotation))) {
+                        if (ArrayUtils.isEmpty(aw) || matchesWithAnnotations(typeToEnhance, aw)) {
                             runEnhancement(originatingElement, typeToEnhance, visitorContext, extension, enhanceMethod);
                             continue outer;
                         }
@@ -256,6 +256,40 @@ public class BuildTimeExtensionRegistry implements LifeCycle<BuildTimeExtensionR
 
             }
         }
+    }
+
+    private boolean matchesWithAnnotations(ClassElement typeToEnhance, Class<? extends Annotation>[] annotationTypes) {
+        for (Class<? extends Annotation> annotationType : annotationTypes) {
+            if (hasAnnotationOnClassOrMember(typeToEnhance, annotationType.getName())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean hasAnnotationOnClassOrMember(ClassElement classElement, String annotationName) {
+        if (classElement.hasAnnotation(annotationName)) {
+            return true;
+        }
+        if (!classElement.getEnclosedElements(ElementQuery.ALL_FIELDS
+                .annotated(annotationMetadata -> annotationMetadata.hasAnnotation(annotationName))).isEmpty()) {
+            return true;
+        }
+        if (!classElement.getEnclosedElements(ElementQuery.CONSTRUCTORS
+                .annotated(annotationMetadata -> annotationMetadata.hasAnnotation(annotationName))).isEmpty()) {
+            return true;
+        }
+        for (MethodElement method : classElement.getEnclosedElements(ElementQuery.ALL_METHODS)) {
+            if (method.hasAnnotation(annotationName)) {
+                return true;
+            }
+            for (ParameterElement parameter : method.getParameters()) {
+                if (parameter.hasAnnotation(annotationName)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /**

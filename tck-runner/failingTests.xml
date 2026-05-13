@@ -283,12 +283,6 @@
                     <exclude name=".*"/>
                 </methods>
             </class>
-            <!--  Requires re-working TCK error handling -->
-            <class name="org.jboss.cdi.tck.tests.build.compatible.extensions.inspectAnnotatedSubtypes.InspectAnnotatedSubtypesTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
             <!--            Bean container-->
         </classes>
 

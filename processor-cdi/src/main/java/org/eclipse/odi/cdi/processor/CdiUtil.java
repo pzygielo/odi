@@ -47,6 +47,7 @@ import jakarta.inject.Inject;
 import jakarta.interceptor.Interceptor;
 
 import java.lang.annotation.Annotation;
+import java.lang.annotation.RetentionPolicy;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
@@ -498,6 +499,10 @@ public final class CdiUtil {
             if (AnnotationUtil.NAMED.equals(annotationName)) {
                 continue;
             }
+            if (!hasRuntimeRetention(context, annotationName)) {
+                element.removeAnnotation(annotationName);
+                continue;
+            }
             AnnotationValue<Annotation> annotationValue = annotationMetadata.getAnnotation(annotationName);
             if (annotationValue == null) {
                 continue;
@@ -535,6 +540,10 @@ public final class CdiUtil {
                         .forEach(nonBindingMembers::add)
         );
         return nonBindingMembers;
+    }
+
+    private static boolean hasRuntimeRetention(VisitorContext context, String annotationName) {
+        return context.getAnnotationRetentionPolicy(annotationName) == RetentionPolicy.RUNTIME;
     }
 
     private static boolean isQualifierAnnotation(VisitorContext context, String annotationName) {

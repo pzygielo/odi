@@ -64,6 +64,9 @@ public final class AnnotationUtils {
             if (stereotypes.contains(name)) {
                 continue;
             }
+            if (!isRuntimeQualifier(annotationMetadata, name)) {
+                continue;
+            }
             Annotation annotation;
             if (name.equals(Any.NAME)) {
                 annotation = jakarta.enterprise.inject.Any.Literal.INSTANCE;
@@ -265,6 +268,9 @@ public final class AnnotationUtils {
             if (stereotypes.contains(qualifierName)) {
                 continue;
             }
+            if (!isRuntimeQualifier(annotationMetadata, qualifierName)) {
+                continue;
+            }
             if (annotationMetadata.findRepeatableAnnotation(qualifierName).isPresent()) {
                 List<AnnotationValue<Annotation>> values = annotationMetadata.getAnnotationValuesByName(qualifierName);
                 if (!values.isEmpty()) {
@@ -282,6 +288,16 @@ public final class AnnotationUtils {
         return qualifiers.size() == 1
                 ? qualifiers.get(0)
                 : Qualifiers.byQualifiers(qualifiers.toArray(new Qualifier[0]));
+    }
+
+    private static boolean isRuntimeQualifier(AnnotationMetadata annotationMetadata, String qualifierName) {
+        if (Any.NAME.equals(qualifierName)
+                || Default.class.getName().equals(qualifierName)
+                || MetaAnnotationSupport.META_ANNOTATION_NAMED.equals(qualifierName)) {
+            return true;
+        }
+        AnnotationValue<Annotation> qualifier = annotationMetadata.getAnnotation(qualifierName);
+        return qualifier == null || qualifier.getRetentionPolicy() == RetentionPolicy.RUNTIME;
     }
 
     /**

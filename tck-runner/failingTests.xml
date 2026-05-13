@@ -207,12 +207,6 @@
                     <exclude name=".*"/>
                 </methods>
             </class>
-            <class name="org.jboss.cdi.tck.tests.event.bindingTypes.EventBindingTypesTest">
-                <!-- Retention CLASS is only supported in Micronaut 4 -->
-                <methods>
-                    <exclude name="testNonRuntimeBindingTypeIsNotAnEventBindingType"/>
-                </methods>
-            </class>
             <class name="org.jboss.cdi.tck.tests.implementation.simple.definition.normalScopedWithPublicField.NormalScopedWithPublicFieldTest">
                 <!-- Don't allow public field for scoped beans -->
                 <methods>

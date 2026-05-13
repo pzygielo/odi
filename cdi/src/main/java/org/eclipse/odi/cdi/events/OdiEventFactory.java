@@ -83,7 +83,7 @@ public final class OdiEventFactory {
                 //noinspection unchecked
                 eventType = (Argument<T>) typeParameters[0];
             }
-            eventQualifier = Qualifiers.forArgument(argument);
+            eventQualifier = AnnotationUtils.qualifierFromQualifierMetadata(argument.getAnnotationMetadata());
             if (AnyQualifier.INSTANCE.equals(eventQualifier)) {
                 eventQualifier = DefaultQualifier.instance();
             }

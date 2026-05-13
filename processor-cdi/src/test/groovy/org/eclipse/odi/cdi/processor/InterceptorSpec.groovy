@@ -67,4 +67,90 @@ class MonitoringInterceptor {
         bean.@$interceptors[0][0] instanceof JakartaInterceptorAdapter
         bean.@$interceptors[0][0].aroundInvoke.name == 'monitorInvocation'
     }
+
+    void 'test fail compilation for intercepted bean without bean constructor'() {
+        when:
+        buildContext('''
+package intertest;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.interceptor.*;
+import java.lang.annotation.*;
+import static java.lang.annotation.ElementType.*;
+import static java.lang.annotation.RetentionPolicy.*;
+
+@Monitored
+@Dependent
+class Test {
+    private Test() {
+    }
+
+    Test(String name) {
+    }
+
+    public void test() {
+    }
+}
+
+@Monitored
+@Interceptor
+class MonitoringInterceptor {
+    @AroundInvoke
+    public Object monitorInvocation(InvocationContext ctx) throws Exception {
+        return ctx.proceed();
+    }
+}
+
+@Inherited
+@InterceptorBinding
+@Target({TYPE, METHOD})
+@Retention(RUNTIME)
+@interface Monitored {}
+''')
+
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains('Intercepted bean classes must declare a non-private no-arguments constructor or an @Inject constructor')
+    }
+
+    void 'test intercepted bean with inject constructor compiles'() {
+        expect:
+        buildContext('''
+package intertest;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.inject.spi.BeanManager;
+import jakarta.inject.Inject;
+import jakarta.interceptor.*;
+import java.lang.annotation.*;
+import static java.lang.annotation.ElementType.*;
+import static java.lang.annotation.RetentionPolicy.*;
+
+@Monitored
+@Dependent
+class Test {
+    @Inject
+    Test(BeanManager beanManager) {
+    }
+
+    public void test() {
+    }
+}
+
+@Monitored
+@Interceptor
+class MonitoringInterceptor {
+    @AroundInvoke
+    public Object monitorInvocation(InvocationContext ctx) throws Exception {
+        return ctx.proceed();
+    }
+}
+
+@Inherited
+@InterceptorBinding
+@Target({TYPE, METHOD})
+@Retention(RUNTIME)
+@interface Monitored {}
+''')
+    }
 }

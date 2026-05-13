@@ -812,10 +812,7 @@ public final class CdiUtil {
         if (!classElement.hasStereotype(jakarta.enterprise.context.NormalScope.class.getName())) {
             return false;
         }
-        boolean hasNonPrivateNoArgsConstructor = classElement.getAccessibleConstructors()
-                .stream()
-                .anyMatch(constructor -> constructor.getParameters().length == 0);
-        if (!hasNonPrivateNoArgsConstructor) {
+        if (!hasNonPrivateNoArgsConstructor(classElement)) {
             context.fail(
                     DEPLOYMENT_EXCEPTION_MARKER
                             + "Managed bean classes with normal scope must declare a non-private no-arguments constructor",
@@ -824,6 +821,24 @@ public final class CdiUtil {
             return true;
         }
         return false;
+    }
+
+    public static boolean validateInterceptedBeanConstructor(VisitorContext context, ClassElement classElement) {
+        if (!isBeanClass(classElement)) {
+            context.fail(
+                    DEPLOYMENT_EXCEPTION_MARKER
+                            + "Intercepted bean classes must declare a non-private no-arguments constructor or an @Inject constructor",
+                    classElement
+            );
+            return true;
+        }
+        return false;
+    }
+
+    private static boolean hasNonPrivateNoArgsConstructor(ClassElement classElement) {
+        return classElement.getAccessibleConstructors()
+                .stream()
+                .anyMatch(constructor -> constructor.getParameters().length == 0);
     }
 
     public static boolean validateNormalScopePublicFields(VisitorContext context, ClassElement classElement) {

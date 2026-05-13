@@ -33,6 +33,7 @@ import jakarta.interceptor.AroundInvoke;
 import jakarta.interceptor.Interceptor;
 import jakarta.interceptor.InterceptorBinding;
 import org.eclipse.odi.cdi.annotation.OdiConstructorTarget;
+import org.eclipse.odi.cdi.processor.CdiUtil;
 
 import java.lang.annotation.Annotation;
 import java.util.LinkedHashSet;
@@ -107,6 +108,9 @@ public class InterceptorBindingVisitor implements TypeElementVisitor<Object, Int
         }
 
         if (hasClassOrMethodInterceptorBinding) {
+            if (CdiUtil.validateInterceptedBeanConstructor(context, element)) {
+                return;
+            }
             element.annotate(Around.class, builder -> {
                 builder
                         .member("proxyTarget", true)

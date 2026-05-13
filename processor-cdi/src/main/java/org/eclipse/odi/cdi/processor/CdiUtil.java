@@ -797,6 +797,17 @@ public final class CdiUtil {
         return false;
     }
 
+    public static boolean validateNormalScopeFinalClass(VisitorContext context, ClassElement classElement) {
+        if (classElement.hasStereotype(jakarta.enterprise.context.NormalScope.class.getName()) && classElement.isFinal()) {
+            context.fail(
+                    DEPLOYMENT_EXCEPTION_MARKER + "Managed bean classes that are final must have @Dependent scope",
+                    classElement
+            );
+            return true;
+        }
+        return false;
+    }
+
     public static boolean validateNormalScopePublicFields(VisitorContext context, ClassElement classElement) {
         if (!classElement.hasStereotype(jakarta.enterprise.context.NormalScope.class.getName())) {
             return false;

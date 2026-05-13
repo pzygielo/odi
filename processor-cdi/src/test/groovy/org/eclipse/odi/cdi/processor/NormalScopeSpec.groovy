@@ -109,7 +109,20 @@ final class Test {
 ''')
         then:
         def e = thrown(RuntimeException)
-        e.message.contains('Class must be made non-final to support proxying')
+        e.message.contains('Managed bean classes that are final must have @Dependent scope')
+    }
+
+    void 'test dependent final class compiles'() {
+        expect:
+        buildBeanDefinition('appscope.Test', '''
+package appscope;
+
+@jakarta.enterprise.context.Dependent
+final class Test {
+
+}
+
+''')
     }
 
     void 'test fail compilation with normal scoped generic managed bean'() {

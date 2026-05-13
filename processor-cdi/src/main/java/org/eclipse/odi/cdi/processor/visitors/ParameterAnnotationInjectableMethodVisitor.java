@@ -85,6 +85,9 @@ abstract class ParameterAnnotationInjectableMethodVisitor<T extends Annotation> 
                     && CdiUtil.validateInjectedType(context, parameter.getGenericType(), parameter)) {
                 return;
             }
+            if (validateParameter(element, parameter, context)) {
+                return;
+            }
         }
         ParameterElement parameter = parameters.get(0);
         if (element.isAbstract()) {
@@ -99,6 +102,10 @@ abstract class ParameterAnnotationInjectableMethodVisitor<T extends Annotation> 
         }
         CdiUtil.visitQualifierDefaults(context, parameter);
         handleMatch(element, parameter, context);
+    }
+
+    protected boolean validateParameter(MethodElement methodElement, ParameterElement parameterElement, VisitorContext context) {
+        return false;
     }
 
     public abstract void handleMatch(MethodElement methodElement, ParameterElement parameterElement, VisitorContext context);

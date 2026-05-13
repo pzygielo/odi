@@ -47,6 +47,11 @@ public class DisposesMethodVisitor extends ParameterAnnotationInjectableMethodVi
     }
 
     @Override
+    protected boolean validateParameter(MethodElement methodElement, ParameterElement parameterElement, VisitorContext context) {
+        return CdiUtil.validateDisposerInjectionPointMetadata(context, parameterElement);
+    }
+
+    @Override
     public void handleMatch(MethodElement methodElement, ParameterElement parameterElement, VisitorContext context) {
         final ClassElement disposedType = parameterElement.getType();
 

@@ -656,6 +656,15 @@ public final class CdiUtil {
         return false;
     }
 
+    public static boolean validateDisposerInjectionPointMetadata(VisitorContext context, ParameterElement parameterElement) {
+        if (!parameterElement.hasDeclaredAnnotation(Disposes.class)
+                && InjectionPoint.class.getName().equals(parameterElement.getGenericType().getName())) {
+            context.fail("Disposer methods cannot inject InjectionPoint metadata", parameterElement);
+            return true;
+        }
+        return false;
+    }
+
     private static boolean validateInjectionPointMetadata(VisitorContext context,
                                                           ClassElement injectPointType,
                                                           TypedElement injectPoint) {

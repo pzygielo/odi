@@ -107,4 +107,33 @@ class EntityManager implements AutoCloseable {
         def e = thrown(RuntimeException)
         e.message.contains("No associated @Produces method found for @Disposes method.")
     }
+
+    void "test fail compilation when a disposer method injects injection point metadata"() {
+        when:
+        buildContext('''
+package distest;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.inject.Disposes;
+import jakarta.enterprise.inject.Produces;
+import jakarta.enterprise.inject.spi.InjectionPoint;
+
+@Dependent
+class GreetingProducer {
+
+    @Produces
+    @Dependent
+    String greeting() {
+        return "hello";
+    }
+
+    void close(@Disposes String greeting, InjectionPoint injectionPoint) {
+    }
+}
+''')
+
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains("Disposer methods cannot inject InjectionPoint metadata")
+    }
 }

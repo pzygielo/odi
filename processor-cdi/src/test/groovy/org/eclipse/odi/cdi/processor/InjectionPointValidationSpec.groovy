@@ -69,4 +69,74 @@ class Dao<T1, T2> {
 }
 ''')
     }
+
+    void "test raw event injection point fails"() {
+        when:
+        buildBeanDefinition('rawevent.Consumer', '''
+package rawevent;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.event.Event;
+import jakarta.inject.Inject;
+
+@Dependent
+class Consumer {
+    @SuppressWarnings("rawtypes")
+    @Inject
+    Event event;
+}
+''')
+
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains("jakarta.enterprise.event.Event must have a required type parameter specified")
+    }
+
+    void "test raw instance injection point fails"() {
+        when:
+        buildBeanDefinition('rawinstance.Consumer', '''
+package rawinstance;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.inject.Instance;
+import jakarta.inject.Inject;
+
+@Dependent
+class Consumer {
+    @SuppressWarnings("rawtypes")
+    @Inject
+    Consumer(Instance instance) {
+    }
+}
+''')
+
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains("jakarta.enterprise.inject.Instance must have a required type parameter specified")
+    }
+
+    void "test parameterized event and instance injection points compile"() {
+        expect:
+        buildBeanDefinition('typedbuiltin.Consumer', '''
+package typedbuiltin;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.event.Event;
+import jakarta.enterprise.inject.Instance;
+import jakarta.inject.Inject;
+
+@Dependent
+class Consumer {
+    @Inject
+    Event<Foo> event;
+
+    @Inject
+    Instance<Foo> instance;
+}
+
+@Dependent
+class Foo {
+}
+''')
+    }
 }

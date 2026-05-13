@@ -168,36 +168,6 @@
                     <exclude name="testParameterizedResolvedType"/>
                 </methods>
             </class>
-            <class name="org.jboss.cdi.tck.tests.event.broken.raw.RawEventDisposerInjectionTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.event.broken.raw.RawEventInitMethodInjectionTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.event.broken.raw.RawEventFieldInjectionTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.event.broken.raw.RawEventConstructorInjectionTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.event.broken.raw.RawEventProducerMethodInjectionTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.event.broken.raw.RawEventObserverInjectionTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
             <!-- Validate this statement:
              This class is not a bean since it does not have a default constructor nor does it have a constructor annotated with {@link
  * @Inject}. As such, an observer method is not detected on this class.
@@ -569,36 +539,6 @@
                     <exclude name="testNormalCircularConstructors"/>
                     <exclude name="testNormalProducerMethodDeclaredOnDependentBeanWhichInjectsProducedBean"/>
                     <exclude name="testSelfConsumingConstructorsOnNormalBean"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.lookup.dynamic.broken.raw.RawInstanceDisposerInjectionTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.lookup.dynamic.broken.raw.RawInstanceInitMethodInjectionTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.lookup.dynamic.broken.raw.RawInstanceObserverInjectionTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.lookup.dynamic.broken.raw.RawInstanceProducerMethodInjectionTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.lookup.dynamic.broken.raw.RawInstanceFieldInjectionTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.lookup.dynamic.broken.raw.RawInstanceConstructorInjectionTest">
-                <methods>
-                    <exclude name=".*"/>
                 </methods>
             </class>
             <class name="org.jboss.cdi.tck.tests.se.discovery.trimmed.TrimmedBeanArchiveSETest">

@@ -762,6 +762,7 @@ public final class CdiUtil {
     }
 
     private static boolean isNoGenericType(ClassElement classElement) {
-        return classElement.getTypeArguments().isEmpty();
+        return classElement.isRawType()
+                || (classElement.getBoundGenericTypes().isEmpty() && classElement.getTypeArguments().isEmpty());
     }
 }

@@ -116,4 +116,88 @@ class Shop {
         def e = thrown(RuntimeException)
         e.message.contains("Interceptors cannot have fields annotated with @Produces")
     }
+
+    void "test fail compilation for producer method with wildcard return type"() {
+        when:
+        buildBeanDefinition('test.Shop', """
+package test;
+
+import java.util.*;
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.inject.Produces;
+
+@Dependent
+class Shop {
+    @Produces
+    List<?> getBean() {
+        return List.of();
+    }
+}
+""")
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains("Producer type must not contain wildcard type parameters")
+    }
+
+    void "test fail compilation for producer field with type variable type"() {
+        when:
+        buildBeanDefinition('test.Shop', """
+package test;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.inject.Produces;
+
+@Dependent
+class Shop<T> {
+    @Produces
+    T bean;
+}
+""")
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains("Producer type must not be a type variable")
+    }
+
+    void "test fail compilation for non dependent producer method with parameterized type variable return type"() {
+        when:
+        buildBeanDefinition('test.Shop', """
+package test;
+
+import java.util.*;
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.context.RequestScoped;
+import jakarta.enterprise.inject.Produces;
+
+@Dependent
+class Shop<T> {
+    @Produces
+    @RequestScoped
+    List<T> getBean() {
+        return new ArrayList<T>();
+    }
+}
+""")
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains("Producer types with type variables must have @Dependent scope")
+    }
+
+    void "test dependent producer method with parameterized type variable return type compiles"() {
+        expect:
+        buildBeanDefinition('test.Shop', """
+package test;
+
+import java.util.*;
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.inject.Produces;
+
+@Dependent
+class Shop<T> {
+    @Produces
+    List<T> getBean() {
+        return new ArrayList<T>();
+    }
+}
+""")
+    }
 }

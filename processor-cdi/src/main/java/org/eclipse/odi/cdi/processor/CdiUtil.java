@@ -632,6 +632,22 @@ public final class CdiUtil {
         return false;
     }
 
+    public static boolean validateProducerType(VisitorContext context, ClassElement producerType, Element producerElement) {
+        if (containsWildcard(producerType)) {
+            context.fail("Producer type must not contain wildcard type parameters", producerElement);
+            return true;
+        }
+        if (isTypeVariable(producerType) || isArrayWithTypeVariableComponent(producerType)) {
+            context.fail("Producer type must not be a type variable", producerElement);
+            return true;
+        }
+        if (!hasDependentScope(producerElement, context) && containsTypeVariable(producerType)) {
+            context.fail("Producer types with type variables must have @Dependent scope", producerElement);
+            return true;
+        }
+        return false;
+    }
+
     private static boolean validateResolvableInjectionPoint(VisitorContext context,
                                                             ClassElement injectPointType,
                                                             TypedElement injectPoint) {
@@ -755,6 +771,54 @@ public final class CdiUtil {
 
     private static boolean isObjectType(ClassElement typeArgument) {
         return Object.class.getName().equals(typeArgument.getName());
+    }
+
+    private static boolean containsWildcard(ClassElement classElement) {
+        if (classElement instanceof WildcardElement || classElement.isWildcard()) {
+            return true;
+        }
+        if (classElement.isArray()) {
+            return containsWildcard(classElement.fromArray());
+        }
+        for (ClassElement typeArgument : resolvedTypeArguments(classElement)) {
+            if (containsWildcard(typeArgument)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean containsTypeVariable(ClassElement classElement) {
+        if (isTypeVariable(classElement)) {
+            return true;
+        }
+        if (classElement.isArray()) {
+            return containsTypeVariable(classElement.fromArray());
+        }
+        for (ClassElement typeArgument : resolvedTypeArguments(classElement)) {
+            if (containsTypeVariable(typeArgument)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isArrayWithTypeVariableComponent(ClassElement classElement) {
+        return classElement.isArray() && containsTypeVariable(classElement.fromArray());
+    }
+
+    private static boolean isTypeVariable(ClassElement classElement) {
+        return classElement instanceof GenericPlaceholderElement
+                || classElement.isGenericPlaceholder()
+                || classElement.isTypeVariable();
+    }
+
+    private static List<ClassElement> resolvedTypeArguments(ClassElement classElement) {
+        List<ClassElement> typeArguments = new ArrayList<>(classElement.getBoundGenericTypes());
+        if (typeArguments.isEmpty() && !classElement.getTypeArguments().isEmpty()) {
+            typeArguments.addAll(classElement.getTypeArguments().values());
+        }
+        return typeArguments;
     }
 
     private static boolean hasOnlyDefaultQualifier(VisitorContext context, Element element) {

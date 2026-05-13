@@ -17,19 +17,25 @@ package org.eclipse.odi.cdi.processor;
 
 import io.micronaut.context.annotation.Bean;
 import io.micronaut.core.annotation.AnnotationMetadata;
+import io.micronaut.core.annotation.AnnotationValue;
 import io.micronaut.inject.ast.ClassElement;
 import io.micronaut.inject.ast.Element;
 import io.micronaut.inject.ast.FieldElement;
 import io.micronaut.inject.ast.MethodElement;
 import io.micronaut.inject.visitor.TypeElementVisitor;
 import io.micronaut.inject.visitor.VisitorContext;
+import jakarta.annotation.Priority;
 import jakarta.enterprise.context.Dependent;
 import jakarta.enterprise.inject.Produces;
 import jakarta.enterprise.inject.Stereotype;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.OptionalInt;
+import java.util.Set;
 
 /**
  * Validate elements annotated with {@link jakarta.enterprise.inject.Stereotype}.
@@ -59,6 +65,7 @@ public class ClassStereotypeValidator implements TypeElementVisitor<Object, Ster
         List<String> scopes = validateScopes(element, context, stereotypes);
         validateQualifiers(element, context, stereotypes);
         validateTyped(element, context, stereotypes);
+        validatePriority(element, context, stereotypes);
         if (element instanceof ClassElement && !((ClassElement) element).isInterface()) {
             if (scopes.isEmpty()) {
                 element.annotate(Dependent.class);
@@ -66,6 +73,49 @@ public class ClassStereotypeValidator implements TypeElementVisitor<Object, Ster
             CdiUtil.visitBeanDefinition(context, element);
             CdiUtil.visitPriority(context, (ClassElement) element);
         }
+    }
+
+    private void validatePriority(Element element, VisitorContext context, List<String> stereotypes) {
+        if (element.hasDeclaredAnnotation(Priority.class)) {
+            return;
+        }
+        Set<Integer> priorities = new LinkedHashSet<>();
+        Set<String> visited = new HashSet<>();
+        for (String stereotype : stereotypes) {
+            collectStereotypePriorities(context, stereotype, priorities, visited);
+        }
+        if (priorities.size() > 1) {
+            context.fail("Inherited stereotypes ["
+                                 + CdiUtil.toAnnotationDescription(stereotypes)
+                                 + "] declare multiple @Priority values: " + priorities,
+                         element);
+        }
+    }
+
+    private void collectStereotypePriorities(VisitorContext context,
+                                             String stereotype,
+                                             Set<Integer> priorities,
+                                             Set<String> visited) {
+        if (stereotype.equals(Stereotype.class.getName()) || !visited.add(stereotype)) {
+            return;
+        }
+        context.getClassElement(stereotype).ifPresent(stereotypeElement -> {
+            declaredPriority(stereotypeElement.getAnnotationMetadata()).ifPresent(priorities::add);
+            for (String nestedStereotype : stereotypeElement.getAnnotationNamesByStereotype(Stereotype.class)) {
+                collectStereotypePriorities(context, nestedStereotype, priorities, visited);
+            }
+        });
+    }
+
+    private static OptionalInt declaredPriority(AnnotationMetadata annotationMetadata) {
+        AnnotationValue<?> priority = annotationMetadata.getDeclaredAnnotation(Priority.class);
+        if (priority != null) {
+            OptionalInt value = priority.intValue();
+            if (value.isPresent()) {
+                return value;
+            }
+        }
+        return annotationMetadata.getDeclaredMetadata().intValue(Priority.class);
     }
 
     private void validateTyped(Element element, VisitorContext context, List<String> stereotypes) {

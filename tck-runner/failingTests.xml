@@ -65,21 +65,6 @@
                     <exclude name="testProducerMethod"/>
                 </methods>
             </class>
-            <class name="org.jboss.cdi.tck.tests.definition.stereotype.broken.multiplePriorities.inherited.StereotypeInheritedPriorityConflictTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.definition.stereotype.broken.multiplePriorities.ConflictingPrioritiesFromSingleStereotypeTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.definition.stereotype.broken.multiplePriorities.ConflictingPriorityStereotypesTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
             <!-- Inherited stereotypes [@AnimalStereotype] include more than one defined scope -->
             <class name="org.jboss.cdi.tck.tests.definition.stereotype.StereotypeDefinitionTest">
                 <methods>

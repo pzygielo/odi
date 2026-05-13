@@ -103,4 +103,140 @@ class Bar {
 }
 ''')
     }
+
+    void 'test duplicate bean names fail with exhaustive bean classes'() {
+        when:
+        withBeanClasses('duplicatenamed.Cod,duplicatenamed.Sole') {
+            buildBeanDefinition('duplicatenamed.Cod', '''
+package duplicatenamed;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.inject.Named;
+
+@Named("whitefish")
+@Dependent
+class Cod {
+}
+
+@Named("whitefish")
+@Dependent
+class Sole {
+}
+''')
+        }
+
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains("Ambiguous bean name 'whitefish' conflicts with bean name 'whitefish'")
+    }
+
+    void 'test bean name prefix fails with exhaustive bean classes'() {
+        when:
+        withBeanClasses('prefixnamed.Foo,prefixnamed.FooBarBaz') {
+            buildBeanDefinition('prefixnamed.Foo', '''
+package prefixnamed;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.inject.Named;
+
+@Named
+@Dependent
+class Foo {
+}
+
+@Named("foo.bar.baz")
+@Dependent
+class FooBarBaz {
+}
+''')
+        }
+
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains("Ambiguous bean name 'foo' conflicts with bean name 'foo.bar.baz'")
+    }
+
+    void 'test disabled alternative bean name does not create ambiguity'() {
+        expect:
+        withBeanClasses('disablednamed.Cod,disablednamed.Plaice') {
+            buildBeanDefinition('disablednamed.Plaice', '''
+package disablednamed;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.inject.Alternative;
+import jakarta.inject.Named;
+
+@Named("whitefish")
+@Alternative
+@Dependent
+class Cod {
+}
+
+@Named("whitefish")
+@Dependent
+class Plaice {
+}
+''')
+        }
+    }
+
+    void 'test priority alternative bean name resolves ambiguity'() {
+        expect:
+        withBeanClasses('prioritynamed.Salmon,prioritynamed.Sole') {
+            buildBeanDefinition('prioritynamed.Salmon', '''
+package prioritynamed;
+
+import jakarta.annotation.Priority;
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.inject.Alternative;
+import jakarta.inject.Named;
+
+@Named("fish")
+@Dependent
+class Salmon {
+}
+
+@Named("fish")
+@Alternative
+@Priority(1)
+@Dependent
+class Sole {
+}
+''')
+        }
+    }
+
+    void 'test duplicate bean names do not fail without exhaustive bean classes'() {
+        expect:
+        buildBeanDefinition('duplicatenamednonexhaustive.Cod', '''
+package duplicatenamednonexhaustive;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.inject.Named;
+
+@Named("whitefish")
+@Dependent
+class Cod {
+}
+
+@Named("whitefish")
+@Dependent
+class Sole {
+}
+''')
+    }
+
+    private static Object withBeanClasses(String classNames, Closure<?> closure) {
+        String previous = System.getProperty(CdiUtil.BEAN_CLASSES_OPTION)
+        System.setProperty(CdiUtil.BEAN_CLASSES_OPTION, classNames)
+        try {
+            return closure.call()
+        } finally {
+            if (previous == null) {
+                System.clearProperty(CdiUtil.BEAN_CLASSES_OPTION)
+            } else {
+                System.setProperty(CdiUtil.BEAN_CLASSES_OPTION, previous)
+            }
+        }
+    }
 }

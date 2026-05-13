@@ -30,13 +30,16 @@ import io.micronaut.inject.visitor.VisitorContext;
 import jakarta.enterprise.inject.Stereotype;
 
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 /**
  * Validates elements annotated with {@link jakarta.inject.Named}.
  */
 public class NamedVisitor implements TypeElementVisitor<Object, Object> {
+    private static final String DEPLOYMENT_EXCEPTION_MARKER = "[ODI_DEPLOYMENT_EXCEPTION] ";
 
     @Override
     public Set<String> getSupportedAnnotationNames() {
@@ -47,6 +50,7 @@ public class NamedVisitor implements TypeElementVisitor<Object, Object> {
     public void visitClass(ClassElement element, VisitorContext context) {
         applyCdiDefaultName(element);
         validateElement(element, context);
+        validateAmbiguousBeanName(element, context);
     }
 
     private void validateElement(Element element, VisitorContext context) {
@@ -166,6 +170,125 @@ public class NamedVisitor implements TypeElementVisitor<Object, Object> {
         if (element.hasAnnotation(AnnotationUtil.ANN_NAME) || element.hasStereotype(AnnotationUtil.ANN_NAME)) {
             element.stringValue(AnnotationUtil.ANN_NAME).ifPresent((name) -> validateIdentifier(name, element, context));
         }
+    }
+
+    private static void validateAmbiguousBeanName(ClassElement element, VisitorContext context) {
+        Set<String> configuredBeanClasses = configuredBeanClasses(context);
+        if (configuredBeanClasses.isEmpty()
+                || !isNamedBeanClass(element)) {
+            return;
+        }
+        Optional<String> beanName = resolveBeanName(element);
+        if (beanName.isEmpty()) {
+            return;
+        }
+        if (!isNameResolutionCandidate(context, element)) {
+            return;
+        }
+        for (String configuredBeanClass : configuredBeanClasses) {
+            if (configuredBeanClass.equals(element.getName())) {
+                continue;
+            }
+            Optional<ClassElement> candidate = context.getClassElement(configuredBeanClass);
+            if (candidate.isEmpty() || !isNamedBeanClass(candidate.get())) {
+                continue;
+            }
+            if (!isNameResolutionCandidate(context, candidate.get())) {
+                continue;
+            }
+            Optional<String> candidateName = resolveBeanName(candidate.get());
+            if (candidateName.isPresent()
+                    && isAmbiguousBeanName(beanName.get(), candidateName.get())
+                    && !hasResolvableAmbiguity(context, element, candidate.get())) {
+                context.fail(
+                        DEPLOYMENT_EXCEPTION_MARKER
+                                + "Ambiguous bean name '" + beanName.get()
+                                + "' conflicts with bean name '" + candidateName.get() + "'",
+                        element
+                );
+                return;
+            }
+        }
+    }
+
+    private static boolean isNamedBeanClass(ClassElement element) {
+        return !element.isInterface()
+                && AnnotationUtil.hasBeanDefiningAnnotation(element)
+                && CdiUtil.isBeanClass(element)
+                && (element.hasAnnotation(AnnotationUtil.ANN_NAME) || element.hasStereotype(AnnotationUtil.ANN_NAME));
+    }
+
+    private static Optional<String> resolveBeanName(ClassElement element) {
+        Optional<String> explicitName = element.stringValue(AnnotationUtil.ANN_NAME);
+        if (explicitName.isPresent() && StringUtils.isNotEmpty(explicitName.get())) {
+            return explicitName;
+        }
+        if (isBeanNamingElement(element)) {
+            return Optional.of(cdiDefaultBeanName(element));
+        }
+        return Optional.empty();
+    }
+
+    private static boolean isNameResolutionCandidate(VisitorContext context, ClassElement element) {
+        return !isAlternative(element) || hasPriority(element) || isSelectedAlternative(context, element);
+    }
+
+    private static boolean hasResolvableAmbiguity(VisitorContext context, ClassElement element, ClassElement candidate) {
+        return isResolvingAlternative(context, element) || isResolvingAlternative(context, candidate);
+    }
+
+    private static boolean isResolvingAlternative(VisitorContext context, ClassElement element) {
+        return isAlternative(element) && (hasPriority(element) || isSelectedAlternative(context, element));
+    }
+
+    private static boolean isAlternative(ClassElement element) {
+        return element.hasAnnotation(jakarta.enterprise.inject.Alternative.class)
+                || element.hasStereotype(jakarta.enterprise.inject.Alternative.class);
+    }
+
+    private static boolean hasPriority(ClassElement element) {
+        return element.hasAnnotation(jakarta.annotation.Priority.class)
+                || element.hasStereotype(jakarta.annotation.Priority.class);
+    }
+
+    private static boolean isSelectedAlternative(VisitorContext context, ClassElement element) {
+        String selectedAlternatives = context.getOptions().get("odi.selected-alternatives");
+        if (selectedAlternatives == null || selectedAlternatives.isBlank()) {
+            selectedAlternatives = System.getProperty("odi.selected-alternatives");
+        }
+        if (selectedAlternatives == null || selectedAlternatives.isBlank()) {
+            return false;
+        }
+        for (String selectedAlternative : selectedAlternatives.split(",")) {
+            if (selectedAlternative.trim().equals(element.getName())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isAmbiguousBeanName(String beanName, String candidateName) {
+        return beanName.equals(candidateName)
+                || beanName.startsWith(candidateName + ".")
+                || candidateName.startsWith(beanName + ".");
+    }
+
+    private static Set<String> configuredBeanClasses(VisitorContext context) {
+        String classNames = context.getOptions().get(CdiUtil.BEAN_CLASSES_OPTION);
+        if (classNames == null || classNames.isBlank()) {
+            classNames = System.getProperty(CdiUtil.BEAN_CLASSES_OPTION);
+        }
+        if (classNames == null || classNames.isBlank()) {
+            return Set.of();
+        }
+        Set<String> beanClasses = new LinkedHashSet<>();
+        for (String className : classNames.split(",")) {
+            String trimmedClassName = className.trim();
+            if (!trimmedClassName.isEmpty()) {
+                beanClasses.add(trimmedClassName);
+            }
+        }
+        return beanClasses;
     }
 
     private static boolean isJavaIdentifier(String name) {

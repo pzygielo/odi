@@ -113,26 +113,6 @@
                     <exclude name="testDisposerMethodsAreIntercepted"/>
                 </methods>
             </class>
-            <class name="org.jboss.cdi.tck.tests.lookup.byname.broken.prefix.ExpandedNamePrefixTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.lookup.byname.broken.prefix.NamePrefixTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.lookup.byname.broken.prefix.ExpandedNamePrefix2Test">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.lookup.byname.broken.duplicity.DuplicitNameTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
             <class name="org.jboss.cdi.tck.tests.lookup.circular.CircularDependencyTest">
                 <!-- Properly detect circular dependency for lazy proxy types -->
                 <methods>

@@ -808,6 +808,24 @@ public final class CdiUtil {
         return false;
     }
 
+    public static boolean validateNormalScopeConstructor(VisitorContext context, ClassElement classElement) {
+        if (!classElement.hasStereotype(jakarta.enterprise.context.NormalScope.class.getName())) {
+            return false;
+        }
+        boolean hasNonPrivateNoArgsConstructor = classElement.getAccessibleConstructors()
+                .stream()
+                .anyMatch(constructor -> constructor.getParameters().length == 0);
+        if (!hasNonPrivateNoArgsConstructor) {
+            context.fail(
+                    DEPLOYMENT_EXCEPTION_MARKER
+                            + "Managed bean classes with normal scope must declare a non-private no-arguments constructor",
+                    classElement
+            );
+            return true;
+        }
+        return false;
+    }
+
     public static boolean validateNormalScopePublicFields(VisitorContext context, ClassElement classElement) {
         if (!classElement.hasStereotype(jakarta.enterprise.context.NormalScope.class.getName())) {
             return false;

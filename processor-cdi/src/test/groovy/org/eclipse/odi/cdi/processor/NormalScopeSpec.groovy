@@ -125,6 +125,58 @@ final class Test {
 ''')
     }
 
+    void 'test fail compilation with normal scoped bean constructor with parameters'() {
+        when:
+        buildBeanDefinition('appscope.Test', '''
+package appscope;
+
+import jakarta.enterprise.inject.spi.BeanManager;
+import jakarta.inject.Inject;
+
+@jakarta.enterprise.context.RequestScoped
+class Test {
+    @Inject
+    Test(BeanManager beanManager) {
+    }
+}
+
+''')
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains('Managed bean classes with normal scope must declare a non-private no-arguments constructor')
+    }
+
+    void 'test fail compilation with normal scoped private constructor'() {
+        when:
+        buildBeanDefinition('appscope.Test', '''
+package appscope;
+
+@jakarta.enterprise.context.RequestScoped
+class Test {
+    private Test() {
+    }
+}
+
+''')
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains('Managed bean classes with normal scope must declare a non-private no-arguments constructor')
+    }
+
+    void 'test normal scoped protected no arguments constructor compiles'() {
+        expect:
+        buildBeanDefinition('appscope.Test', '''
+package appscope;
+
+@jakarta.enterprise.context.RequestScoped
+class Test {
+    protected Test() {
+    }
+}
+
+''')
+    }
+
     void 'test fail compilation with normal scoped generic managed bean'() {
         when:
         buildBeanDefinition('appscope.Test', '''

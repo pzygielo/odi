@@ -244,22 +244,12 @@
                     <exclude name="testDisposerMethodsAreIntercepted"/>
                 </methods>
             </class>
-            <class name="org.jboss.cdi.tck.tests.lookup.clientProxy.unproxyable.beanConstructor.BeanConstructorWithParametersTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
             <class name="org.jboss.cdi.tck.tests.lookup.clientProxy.unproxyable.array.ArrayTest">
                 <methods>
                     <exclude name=".*"/>
                 </methods>
             </class>
             <class name="org.jboss.cdi.tck.tests.lookup.clientProxy.unproxyable.primitive.UnproxyableTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.lookup.clientProxy.unproxyable.privateConstructor.PrivateConstructorTest">
                 <methods>
                     <exclude name=".*"/>
                 </methods>

@@ -26,7 +26,7 @@ import java.lang.annotation.Target;
  * Container annotation for {@link OdiBeanType}.
  */
 @Internal
-@Target({ElementType.TYPE, ElementType.METHOD, ElementType.FIELD})
+@Target({ElementType.TYPE, ElementType.METHOD, ElementType.FIELD, ElementType.PARAMETER})
 @Retention(RetentionPolicy.RUNTIME)
 public @interface OdiBeanTypes {
     /**

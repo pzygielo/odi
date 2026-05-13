@@ -32,6 +32,7 @@ import io.micronaut.inject.ast.GenericPlaceholderElement;
 import io.micronaut.inject.ast.MethodElement;
 import io.micronaut.inject.ast.ParameterElement;
 import io.micronaut.inject.ast.TypedElement;
+import io.micronaut.inject.ast.WildcardElement;
 import io.micronaut.inject.visitor.VisitorContext;
 import jakarta.annotation.Priority;
 import jakarta.enterprise.event.Event;
@@ -321,6 +322,8 @@ public final class CdiUtil {
                     .member("arguments", typeArguments.values.toArray(new AnnotationClassValue<?>[0]))
                     .member("argumentCounts", typeArguments.counts.stream().mapToInt(Integer::intValue).toArray())
                     .member("typeVariables", toBooleanArray(typeArguments.typeVariables))
+                    .member("wildcards", toBooleanArray(typeArguments.wildcards))
+                    .member("lowerBoundCounts", typeArguments.lowerBoundCounts.stream().mapToInt(Integer::intValue).toArray())
                     .member("typeVariableNames", typeArguments.typeVariableNames.toArray(String[]::new))
                     .build());
         }
@@ -372,9 +375,19 @@ public final class CdiUtil {
                                              boolean collapseDeclaredTypeVariables) {
         for (ClassElement typeArgument : typeArguments) {
             boolean typeVariable = typeArgument instanceof GenericPlaceholderElement;
+            boolean wildcard = typeArgument instanceof WildcardElement;
             ClassElement storedTypeArgument = typeArgument;
             List<? extends ClassElement> typeVariableBounds = List.of();
-            if (typeVariable) {
+            List<? extends ClassElement> upperBounds = List.of();
+            List<? extends ClassElement> lowerBounds = List.of();
+            if (wildcard) {
+                WildcardElement wildcardElement = (WildcardElement) typeArgument;
+                upperBounds = wildcardElement.getUpperBounds();
+                lowerBounds = wildcardElement.getLowerBounds();
+                if (!upperBounds.isEmpty()) {
+                    storedTypeArgument = upperBounds.get(0);
+                }
+            } else if (typeVariable) {
                 GenericPlaceholderElement placeholder = (GenericPlaceholderElement) typeArgument;
                 ClassElement resolvedTypeArgument = placeholder.getResolved().orElse(null);
                 if (resolvedTypeArgument != null) {
@@ -387,12 +400,22 @@ public final class CdiUtil {
                     }
                 }
             }
-            List<ClassElement> nestedTypeArguments = typeVariable
-                    ? new ArrayList<>(typeVariableBounds)
-                    : resolveTypeArguments(storedTypeArgument, collapseDeclaredTypeVariables);
+            List<ClassElement> nestedTypeArguments;
+            int lowerBoundCount = 0;
+            if (wildcard) {
+                nestedTypeArguments = new ArrayList<>(upperBounds);
+                nestedTypeArguments.addAll(lowerBounds);
+                lowerBoundCount = lowerBounds.size();
+            } else if (typeVariable) {
+                nestedTypeArguments = new ArrayList<>(typeVariableBounds);
+            } else {
+                nestedTypeArguments = resolveTypeArguments(storedTypeArgument, collapseDeclaredTypeVariables);
+            }
             metadata.values.add(new AnnotationClassValue<>(storedTypeArgument.getName()));
             metadata.counts.add(nestedTypeArguments.size());
             metadata.typeVariables.add(typeVariable);
+            metadata.wildcards.add(wildcard);
+            metadata.lowerBoundCounts.add(lowerBoundCount);
             metadata.typeVariableNames.add(typeVariable ? ((GenericPlaceholderElement) typeArgument).getVariableName() : "");
             collectTypeArguments(nestedTypeArguments, metadata, collapseDeclaredTypeVariables);
         }
@@ -457,6 +480,8 @@ public final class CdiUtil {
         private final List<AnnotationClassValue<?>> values = new ArrayList<>();
         private final List<Integer> counts = new ArrayList<>();
         private final List<Boolean> typeVariables = new ArrayList<>();
+        private final List<Boolean> wildcards = new ArrayList<>();
+        private final List<Integer> lowerBoundCounts = new ArrayList<>();
         private final List<String> typeVariableNames = new ArrayList<>();
     }
 
@@ -484,7 +509,25 @@ public final class CdiUtil {
             injectPoint.annotate(Default.class);
         }
         visitQualifierDefaults(context, injectPoint);
+        visitRequiredType(injectPoint);
         return CdiUtil.validateInjectedType(context, injectPoint.getGenericType(), injectPoint);
+    }
+
+    private static void visitRequiredType(TypedElement injectPoint) {
+        ClassElement requiredType = injectPoint.getGenericType();
+        if (requiredType == null || !hasTypeArguments(requiredType, false)) {
+            return;
+        }
+        BeanTypeArguments typeArguments = toTypeArguments(requiredType, false);
+        injectPoint.annotate(AnnotationValue.builder(org.eclipse.odi.cdi.processor.AnnotationUtil.ANN_BEAN_TYPE)
+                .member(AnnotationMetadata.VALUE_MEMBER, new AnnotationClassValue<>(requiredType.getName()))
+                .member("arguments", typeArguments.values.toArray(new AnnotationClassValue<?>[0]))
+                .member("argumentCounts", typeArguments.counts.stream().mapToInt(Integer::intValue).toArray())
+                .member("typeVariables", toBooleanArray(typeArguments.typeVariables))
+                .member("wildcards", toBooleanArray(typeArguments.wildcards))
+                .member("lowerBoundCounts", typeArguments.lowerBoundCounts.stream().mapToInt(Integer::intValue).toArray())
+                .member("typeVariableNames", typeArguments.typeVariableNames.toArray(String[]::new))
+                .build());
     }
 
     public static void visitQualifierDefaults(VisitorContext context, Element element) {

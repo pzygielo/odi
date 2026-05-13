@@ -20,8 +20,11 @@ import io.micronaut.context.DefaultApplicationContextBuilder;
 import io.micronaut.core.reflect.ReflectionUtils;
 import io.micronaut.core.type.Argument;
 import io.micronaut.inject.BeanDefinition;
+import io.micronaut.inject.QualifiedBeanType;
 
+import java.lang.reflect.Type;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * ODI specific {@link DefaultApplicationContextBuilder}.
@@ -55,6 +58,18 @@ public final class OdiApplicationContextBuilder extends DefaultApplicationContex
                     return Optional.of(primitiveDefaultValue(requestedType));
                 }
                 return Optional.empty();
+            }
+
+            @Override
+            public boolean isCandidateBean(Argument<?> beanType, QualifiedBeanType<?> candidate) {
+                Type requiredType = OdiTypeUtils.getRequiredType(beanType);
+                if (requiredType != null) {
+                    Set<Type> beanTypes = OdiTypeUtils.getBeanTypes(candidate.getAnnotationMetadata());
+                    if (!beanTypes.isEmpty()) {
+                        return OdiTypeUtils.matchesBeanType(requiredType, beanTypes);
+                    }
+                }
+                return candidate.isCandidateBean(beanType);
             }
         });
     }

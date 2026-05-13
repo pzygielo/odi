@@ -28,7 +28,7 @@ import java.lang.annotation.Target;
  */
 @Internal
 @Repeatable(OdiBeanTypes.class)
-@Target({ElementType.TYPE, ElementType.METHOD, ElementType.FIELD})
+@Target({ElementType.TYPE, ElementType.METHOD, ElementType.FIELD, ElementType.PARAMETER})
 @Retention(RetentionPolicy.RUNTIME)
 public @interface OdiBeanType {
     /**
@@ -50,6 +50,16 @@ public @interface OdiBeanType {
      * @return Whether each flattened type argument represents a type variable.
      */
     boolean[] typeVariables() default {};
+
+    /**
+     * @return Whether each flattened type argument represents a wildcard.
+     */
+    boolean[] wildcards() default {};
+
+    /**
+     * @return Number of lower bounds for each flattened wildcard argument.
+     */
+    int[] lowerBoundCounts() default {};
 
     /**
      * @return Type variable names for flattened type variable arguments.

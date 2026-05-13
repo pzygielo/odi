@@ -22,7 +22,6 @@ import io.micronaut.context.exceptions.DependencyInjectionException;
 import io.micronaut.context.exceptions.NoSuchBeanException;
 import io.micronaut.context.exceptions.NonUniqueBeanException;
 import io.micronaut.core.annotation.AnnotationMetadata;
-import io.micronaut.core.annotation.AnnotationValue;
 import io.micronaut.core.annotation.AnnotationUtil;
 import io.micronaut.core.annotation.Internal;
 import io.micronaut.core.annotation.Order;
@@ -50,15 +49,10 @@ import jakarta.enterprise.inject.spi.InjectionPoint;
 import jakarta.enterprise.inject.spi.Prioritized;
 import jakarta.inject.Named;
 import org.eclipse.odi.cdi.annotation.NamedByStereotype;
-import org.eclipse.odi.cdi.annotation.OdiBeanType;
 
 import java.lang.annotation.Annotation;
-import java.lang.reflect.AnnotatedType;
-import java.lang.reflect.GenericDeclaration;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
-import java.lang.reflect.TypeVariable;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -294,24 +288,20 @@ public class OdiBeanImpl<T> implements OdiBean<T>, Prioritized {
     }
 
     private Set<Type> getMetadataBeanTypes() {
-        List<AnnotationValue<OdiBeanType>> beanTypes = definition.getAnnotationMetadata().getAnnotationValuesByType(OdiBeanType.class);
+        Set<Type> beanTypes = OdiTypeUtils.getBeanTypes(definition.getAnnotationMetadata(), resolvedBeanType());
         if (beanTypes.isEmpty()) {
             return Set.of();
         }
-        Set<Type> types = new LinkedHashSet<>();
-        for (AnnotationValue<OdiBeanType> beanType : beanTypes) {
-            Class<?> rawType = beanType.classValue().orElse(null);
-            if (rawType == null || rawType == Object.class) {
-                continue;
-            }
-            Class<?>[] arguments = beanType.classValues("arguments");
-            int[] argumentCounts = beanType.intValues("argumentCounts");
-            boolean[] typeVariables = beanType.booleanValues("typeVariables");
-            String[] typeVariableNames = beanType.stringValues("typeVariableNames");
-            types.add(toBeanType(rawType, arguments, argumentCounts, typeVariables, typeVariableNames));
+        return beanTypes.stream()
+                .filter(OdiTypeUtils::isLegalBeanType)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    private Class<?> resolvedBeanType() {
+        if (definition instanceof AdvisedBeanType<?>) {
+            return ((AdvisedBeanType<?>) definition).getInterceptedType();
         }
-        types.add(Object.class);
-        return types;
+        return definition.getBeanType();
     }
 
     private static void collectBeanTypes(BeanDefinition<?> definition, Class<?> type, Set<Type> types) {
@@ -364,84 +354,6 @@ public class OdiBeanImpl<T> implements OdiBean<T>, Prioritized {
         );
     }
 
-    private static Type toBeanType(Class<?> rawType, Class<?>[] argumentTypes) {
-        return toBeanType(rawType, argumentTypes, new int[0], new boolean[0], new String[0]);
-    }
-
-    private static Type toBeanType(Class<?> rawType,
-                                   Class<?>[] argumentTypes,
-                                   int[] argumentCounts,
-                                   boolean[] typeVariables,
-                                   String[] typeVariableNames) {
-        if (argumentTypes.length == 0) {
-            return rawType;
-        }
-        if (argumentCounts.length == argumentTypes.length) {
-            TypeArgumentReader reader = new TypeArgumentReader(argumentTypes, argumentCounts, typeVariables, typeVariableNames);
-            return new OdiParameterizedType(rawType, reader.readAll());
-        }
-        Type[] arguments = new Type[argumentTypes.length];
-        for (int i = 0; i < argumentTypes.length; i++) {
-            arguments[i] = argumentTypes[i];
-        }
-        return new OdiParameterizedType(rawType, arguments);
-    }
-
-    private static final class TypeArgumentReader {
-        private final Class<?>[] argumentTypes;
-        private final int[] argumentCounts;
-        private final boolean[] typeVariables;
-        private final String[] typeVariableNames;
-        private int index;
-
-        private TypeArgumentReader(Class<?>[] argumentTypes,
-                                   int[] argumentCounts,
-                                   boolean[] typeVariables,
-                                   String[] typeVariableNames) {
-            this.argumentTypes = argumentTypes;
-            this.argumentCounts = argumentCounts;
-            this.typeVariables = typeVariables;
-            this.typeVariableNames = typeVariableNames;
-        }
-
-        private Type[] readAll() {
-            List<Type> arguments = new ArrayList<>(argumentTypes.length);
-            while (index < argumentTypes.length) {
-                arguments.add(read());
-            }
-            return arguments.toArray(Type[]::new);
-        }
-
-        private Type read() {
-            Class<?> type = argumentTypes[index];
-            int childCount = argumentCounts[index];
-            boolean typeVariable = index < typeVariables.length && typeVariables[index];
-            String typeVariableName = index < typeVariableNames.length ? typeVariableNames[index] : type.getSimpleName();
-            index++;
-            if (typeVariable) {
-                if (childCount == 0) {
-                    return new OdiTypeVariable(typeVariableName, type);
-                }
-                Type[] bounds = new Type[childCount];
-                for (int i = 0; i < childCount; i++) {
-                    bounds[i] = read();
-                }
-                return new OdiTypeVariable(typeVariableName, bounds);
-            }
-            Type resolvedType;
-            if (childCount == 0) {
-                resolvedType = type;
-            } else {
-                Type[] children = new Type[childCount];
-                for (int i = 0; i < childCount; i++) {
-                    children[i] = read();
-                }
-                resolvedType = new OdiParameterizedType(type, children);
-            }
-            return resolvedType;
-        }
-    }
-
     private static final class OdiParameterizedType implements ParameterizedType {
         private final Class<?> rawType;
         private final Type[] arguments;
@@ -492,142 +404,6 @@ public class OdiBeanImpl<T> implements OdiBean<T>, Prioritized {
         @Override
         public String toString() {
             return getTypeName();
-        }
-    }
-
-    private static final class OdiTypeVariable implements TypeVariable<GenericDeclaration> {
-        private final String name;
-        private final Type[] bounds;
-        private final GenericDeclaration declaration;
-
-        private OdiTypeVariable(String name, Type bound) {
-            this(name, new Type[]{bound});
-        }
-
-        private OdiTypeVariable(String name, Type[] bounds) {
-            this.name = name;
-            this.bounds = bounds.length == 0 ? new Type[]{Object.class} : bounds.clone();
-            this.declaration = new OdiGenericDeclaration(name);
-        }
-
-        @Override
-        public Type[] getBounds() {
-            return bounds.clone();
-        }
-
-        @Override
-        public GenericDeclaration getGenericDeclaration() {
-            return declaration;
-        }
-
-        @Override
-        public String getName() {
-            return name;
-        }
-
-        @Override
-        public AnnotatedType[] getAnnotatedBounds() {
-            return Arrays.stream(bounds).map(OdiAnnotatedType::new).toArray(AnnotatedType[]::new);
-        }
-
-        @Override
-        public <A extends Annotation> A getAnnotation(Class<A> annotationClass) {
-            return null;
-        }
-
-        @Override
-        public Annotation[] getAnnotations() {
-            return new Annotation[0];
-        }
-
-        @Override
-        public Annotation[] getDeclaredAnnotations() {
-            return new Annotation[0];
-        }
-
-        @Override
-        public String getTypeName() {
-            return name;
-        }
-
-        @Override
-        public boolean equals(Object other) {
-            if (!(other instanceof TypeVariable<?>)) {
-                return false;
-            }
-            TypeVariable<?> that = (TypeVariable<?>) other;
-            return Objects.equals(name, that.getName()) && Arrays.equals(bounds, that.getBounds());
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(name, Arrays.hashCode(bounds));
-        }
-
-        @Override
-        public String toString() {
-            return name;
-        }
-    }
-
-    private static final class OdiGenericDeclaration implements GenericDeclaration {
-        private final String name;
-
-        private OdiGenericDeclaration(String name) {
-            this.name = name;
-        }
-
-        @Override
-        public TypeVariable<?>[] getTypeParameters() {
-            return new TypeVariable<?>[0];
-        }
-
-        @Override
-        public <A extends Annotation> A getAnnotation(Class<A> annotationClass) {
-            return null;
-        }
-
-        @Override
-        public Annotation[] getAnnotations() {
-            return new Annotation[0];
-        }
-
-        @Override
-        public Annotation[] getDeclaredAnnotations() {
-            return new Annotation[0];
-        }
-
-        @Override
-        public String toString() {
-            return name;
-        }
-    }
-
-    private static final class OdiAnnotatedType implements AnnotatedType {
-        private final Type type;
-
-        private OdiAnnotatedType(Type type) {
-            this.type = type;
-        }
-
-        @Override
-        public Type getType() {
-            return type;
-        }
-
-        @Override
-        public <T extends Annotation> T getAnnotation(Class<T> annotationClass) {
-            return null;
-        }
-
-        @Override
-        public Annotation[] getAnnotations() {
-            return new Annotation[0];
-        }
-
-        @Override
-        public Annotation[] getDeclaredAnnotations() {
-            return new Annotation[0];
         }
     }
 

@@ -98,6 +98,21 @@ final class OdiTypeUtils {
         return types;
     }
 
+    static Set<Type> getBeanTypes(AnnotationMetadata annotationMetadata, Class<?> beanType) {
+        Set<Type> types = getBeanTypes(annotationMetadata);
+        if (types.isEmpty()) {
+            return types;
+        }
+        return types.stream()
+                .filter(type -> isBeanTypeForBean(type, beanType))
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    private static boolean isBeanTypeForBean(Type type, Class<?> beanType) {
+        Class<?> rawType = rawType(type);
+        return rawType == null || rawType == Object.class || rawType.isAssignableFrom(beanType);
+    }
+
     private static Type toType(AnnotationValue<OdiBeanType> beanType) {
         Class<?> rawType = beanType.classValue().orElse(null);
         if (rawType == null) {
@@ -367,7 +382,7 @@ final class OdiTypeUtils {
         return false;
     }
 
-    private static boolean isLegalBeanType(Type type) {
+    static boolean isLegalBeanType(Type type) {
         return type != null && !containsWildcard(type);
     }
 

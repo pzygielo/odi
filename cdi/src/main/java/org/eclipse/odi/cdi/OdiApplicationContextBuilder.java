@@ -64,7 +64,7 @@ public final class OdiApplicationContextBuilder extends DefaultApplicationContex
             public boolean isCandidateBean(Argument<?> beanType, QualifiedBeanType<?> candidate) {
                 Type requiredType = OdiTypeUtils.getRequiredType(beanType);
                 if (requiredType != null) {
-                    Set<Type> beanTypes = OdiTypeUtils.getBeanTypes(candidate.getAnnotationMetadata());
+                    Set<Type> beanTypes = OdiTypeUtils.getBeanTypes(candidate.getAnnotationMetadata(), candidate.getBeanType());
                     if (!beanTypes.isEmpty()) {
                         return OdiTypeUtils.matchesBeanType(requiredType, beanTypes);
                     }

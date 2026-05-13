@@ -29,6 +29,8 @@ import io.micronaut.inject.ast.ElementQuery;
 import io.micronaut.inject.ast.MethodElement;
 import io.micronaut.inject.visitor.TypeElementVisitor;
 import io.micronaut.inject.visitor.VisitorContext;
+import jakarta.enterprise.inject.Stereotype;
+import jakarta.enterprise.util.Nonbinding;
 import jakarta.interceptor.AroundInvoke;
 import jakarta.interceptor.Interceptor;
 import jakarta.interceptor.InterceptorBinding;
@@ -36,8 +38,10 @@ import org.eclipse.odi.cdi.annotation.OdiConstructorTarget;
 import org.eclipse.odi.cdi.processor.CdiUtil;
 
 import java.lang.annotation.Annotation;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -171,33 +175,74 @@ public class InterceptorBindingVisitor implements TypeElementVisitor<Object, Int
         Set<String> interceptorBindings = new LinkedHashSet<>(
                 sourceMetadata.getAnnotationNamesByStereotype(InterceptorBinding.class)
         );
+        Set<String> declaredAnnotations = sourceMetadata.getDeclaredAnnotationNames();
+        Map<String, AnnotationValue<Annotation>> collectedBindings = new LinkedHashMap<>();
         for (String interceptorBinding : interceptorBindings) {
-            addNestedInterceptorBindings(target, sourceMetadata, context, interceptorBinding, new LinkedHashSet<>());
+            AnnotationValue<Annotation> annotationValue = declaredAnnotations.contains(interceptorBinding)
+                    ? sourceMetadata.getAnnotation(interceptorBinding)
+                    : null;
+            if (annotationValue != null) {
+                collectedBindings.put(interceptorBinding, annotationValue);
+            }
+        }
+        collectStereotypeInterceptorBindings(target, sourceMetadata, context, collectedBindings, declaredAnnotations);
+        for (String interceptorBinding : interceptorBindings) {
+            addNestedInterceptorBindings(target, context, interceptorBinding, collectedBindings, declaredAnnotations, new LinkedHashSet<>());
+        }
+    }
+
+    private static void collectStereotypeInterceptorBindings(Element target,
+                                                             AnnotationMetadata sourceMetadata,
+                                                             VisitorContext context,
+                                                             Map<String, AnnotationValue<Annotation>> collectedBindings,
+                                                             Set<String> declaredAnnotations) {
+        for (String stereotype : sourceMetadata.getAnnotationNamesByStereotype(Stereotype.class)) {
+            if (stereotype.equals(Stereotype.class.getName())) {
+                continue;
+            }
+            context.getClassElement(stereotype).ifPresent(stereotypeElement -> {
+                Set<String> declaredStereotypeAnnotations = stereotypeElement.getDeclaredAnnotationNames();
+                for (String interceptorBinding : stereotypeElement.getAnnotationNamesByStereotype(InterceptorBinding.class)) {
+                    if (isNestedInterceptorBinding(stereotype, interceptorBinding)
+                            && declaredStereotypeAnnotations.contains(interceptorBinding)) {
+                        AnnotationValue<Annotation> annotationValue = stereotypeElement.getAnnotation(interceptorBinding);
+                        if (annotationValue != null && !declaredAnnotations.contains(interceptorBinding)) {
+                            collectInterceptorBinding(target, context, collectedBindings, interceptorBinding, annotationValue, false);
+                        }
+                    }
+                }
+            });
         }
     }
 
     private static void addNestedInterceptorBindings(Element target,
-                                                     AnnotationMetadata sourceMetadata,
-                                                     VisitorContext context,
-                                                     String interceptorBinding,
-                                                     Set<String> visiting) {
+                                                      VisitorContext context,
+                                                      String interceptorBinding,
+                                                      Map<String, AnnotationValue<Annotation>> collectedBindings,
+                                                      Set<String> declaredAnnotations,
+                                                      Set<String> visiting) {
         if (!visiting.add(interceptorBinding)) {
             return;
         }
         try {
             context.getClassElement(interceptorBinding).ifPresent(bindingElement -> {
+                Set<String> declaredBindingAnnotations = bindingElement.getDeclaredAnnotationNames();
                 List<String> nestedBindings = bindingElement.getAnnotationNamesByStereotype(InterceptorBinding.class);
                 for (String nestedBinding : nestedBindings) {
                     if (isNestedInterceptorBinding(interceptorBinding, nestedBinding)
-                            && !sourceMetadata.hasAnnotation(nestedBinding)) {
+                            && declaredBindingAnnotations.contains(nestedBinding)
+                            && !declaredAnnotations.contains(nestedBinding)) {
                         AnnotationValue<Annotation> nestedAnnotation = bindingElement.getAnnotation(nestedBinding);
                         if (nestedAnnotation != null) {
-                            target.annotate(nestedAnnotation);
+                            if (!collectInterceptorBinding(target, context, collectedBindings, nestedBinding, nestedAnnotation, true)) {
+                                return;
+                            }
                             addNestedInterceptorBindings(
                                     target,
-                                    sourceMetadata,
                                     context,
                                     nestedBinding,
+                                    collectedBindings,
+                                    declaredAnnotations,
                                     visiting
                             );
                         }
@@ -209,9 +254,59 @@ public class InterceptorBindingVisitor implements TypeElementVisitor<Object, Int
         }
     }
 
+    private static boolean collectInterceptorBinding(Element target,
+                                                     VisitorContext context,
+                                                     Map<String, AnnotationValue<Annotation>> collectedBindings,
+                                                     String interceptorBinding,
+                                                     AnnotationValue<Annotation> annotationValue,
+                                                     boolean annotateTarget) {
+        AnnotationValue<Annotation> existingAnnotation = collectedBindings.get(interceptorBinding);
+        if (existingAnnotation == null) {
+            collectedBindings.put(interceptorBinding, annotationValue);
+            if (annotateTarget) {
+                target.annotate(annotationValue);
+            }
+            return true;
+        }
+        if (!interceptorBindingValuesMatch(existingAnnotation, annotationValue, context)) {
+            context.fail("Conflicting interceptor binding values for " + interceptorBinding, target);
+            return false;
+        }
+        return true;
+    }
+
     private static boolean isNestedInterceptorBinding(String interceptorBinding, String nestedBinding) {
         return !nestedBinding.equals(interceptorBinding)
                 && !nestedBinding.equals(InterceptorBinding.class.getName());
+    }
+
+    private static boolean interceptorBindingValuesMatch(AnnotationValue<?> left,
+                                                         AnnotationValue<?> right,
+                                                         VisitorContext context) {
+        if (!left.getAnnotationName().equals(right.getAnnotationName())) {
+            return false;
+        }
+        return bindingValues(left, context).equals(bindingValues(right, context));
+    }
+
+    private static Map<CharSequence, Object> bindingValues(AnnotationValue<?> annotationValue, VisitorContext context) {
+        Map<CharSequence, Object> values = new LinkedHashMap<>(annotationValue.getValues());
+        for (String nonBindingMember : nonBindingMembers(context, annotationValue.getAnnotationName())) {
+            values.remove(nonBindingMember);
+        }
+        return values;
+    }
+
+    private static Set<String> nonBindingMembers(VisitorContext context, String annotationName) {
+        Set<String> nonBindingMembers = new LinkedHashSet<>();
+        context.getClassElement(annotationName).ifPresent(annotation ->
+                annotation.getEnclosedElements(ElementQuery.ALL_METHODS.onlyDeclared())
+                        .stream()
+                        .filter(method -> method.hasAnnotation(Nonbinding.class))
+                        .map(MethodElement::getName)
+                        .forEach(nonBindingMembers::add)
+        );
+        return nonBindingMembers;
     }
 
     private boolean hasInterceptorBinding(MethodElement methodElement) {

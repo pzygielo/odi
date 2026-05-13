@@ -264,4 +264,59 @@ class Shop {
 }
 """)
     }
+
+    void "test fail compilation for producer method with multiple declared scopes"() {
+        when:
+        buildBeanDefinition('test.Shop', """
+package test;
+
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.context.RequestScoped;
+import jakarta.enterprise.inject.Produces;
+
+@Dependent
+class Shop {
+    @Produces
+    @ApplicationScoped
+    @RequestScoped
+    Product getBean() {
+        return new Product();
+    }
+}
+
+class Product {
+}
+""")
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains("Bean declares more than one scope:")
+        e.message.contains("@ApplicationScoped")
+        e.message.contains("@RequestScoped")
+    }
+
+    void "test fail compilation for producer field with multiple declared scopes"() {
+        when:
+        buildBeanDefinition('test.Shop', """
+package test;
+
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.context.RequestScoped;
+import jakarta.enterprise.inject.Produces;
+
+@Dependent
+class Shop {
+    @Produces
+    @ApplicationScoped
+    @RequestScoped
+    String bean = "";
+}
+""")
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains("Bean declares more than one scope:")
+        e.message.contains("@ApplicationScoped")
+        e.message.contains("@RequestScoped")
+    }
 }

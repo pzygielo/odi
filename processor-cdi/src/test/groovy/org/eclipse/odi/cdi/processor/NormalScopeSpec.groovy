@@ -112,6 +112,25 @@ final class Test {
         e.message.contains('Managed bean classes that are final must have @Dependent scope')
     }
 
+    void 'test fail compilation with multiple declared scopes'() {
+        when:
+        buildBeanDefinition('appscope.Test', '''
+package appscope;
+
+@jakarta.enterprise.context.ApplicationScoped
+@jakarta.enterprise.context.RequestScoped
+class Test {
+
+}
+
+''')
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains('Bean declares more than one scope:')
+        e.message.contains('@ApplicationScoped')
+        e.message.contains('@RequestScoped')
+    }
+
     void 'test dependent final class compiles'() {
         expect:
         buildBeanDefinition('appscope.Test', '''

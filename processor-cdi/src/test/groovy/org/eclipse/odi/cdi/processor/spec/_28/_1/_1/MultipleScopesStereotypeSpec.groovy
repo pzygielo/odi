@@ -46,7 +46,9 @@ class Test {
 ''')
         then:
         def e = thrown(RuntimeException)
-        e.message.contains("Inherited stereotypes [@Action] include more than one defined scope: @Singleton and @RequestScoped")
+        e.message.contains("Inherited stereotypes [@Action] include more than one defined scope:")
+        e.message.contains("@Singleton")
+        e.message.contains("@RequestScoped")
     }
 
     void 'test stereotype with more than one scope can declare scope'() {
@@ -76,5 +78,77 @@ class Test {
         definition != null
     }
 
+    void 'test inherited class scope resolves inherited stereotype scope conflict'() {
+        when:
+        def definition = buildBeanDefinition('stype.Chihuahua', '''
+package stype;
+
+import java.lang.annotation.*;
+import static java.lang.annotation.RetentionPolicy.*;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.context.RequestScoped;
+import jakarta.enterprise.inject.Stereotype;
+
+class Chihuahua extends ShortHairedDog {
 }
 
+@AnimalStereotype
+@ApplicationScoped
+class ShortHairedDog {
+}
+
+@RequestScoped
+@Stereotype
+@Inherited
+@Retention(RUNTIME)
+@interface AnimalStereotype {
+}
+''')
+
+        then:
+        definition != null
+        definition.getScope().get() == jakarta.enterprise.context.ApplicationScoped
+    }
+
+    void 'test indirectly inherited class scope resolves inherited stereotype scope conflict'() {
+        when:
+        def definition = buildBeanDefinition('stype.MexicanChihuahua', '''
+package stype;
+
+import java.lang.annotation.*;
+import static java.lang.annotation.RetentionPolicy.*;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.context.RequestScoped;
+import jakarta.enterprise.inject.Stereotype;
+
+@DummyStereotype
+class MexicanChihuahua extends Chihuahua {
+}
+
+class Chihuahua extends ShortHairedDog {
+}
+
+@AnimalStereotype
+@ApplicationScoped
+class ShortHairedDog {
+}
+
+@Stereotype
+@Retention(RUNTIME)
+@interface DummyStereotype {
+}
+
+@RequestScoped
+@Stereotype
+@Inherited
+@Retention(RUNTIME)
+@interface AnimalStereotype {
+}
+''')
+
+        then:
+        definition != null
+        definition.getScope().get() == jakarta.enterprise.context.ApplicationScoped
+    }
+
+}

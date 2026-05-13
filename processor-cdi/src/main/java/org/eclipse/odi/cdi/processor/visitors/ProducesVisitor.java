@@ -57,6 +57,9 @@ public class ProducesVisitor implements TypeElementVisitor<Object, Produces> {
         if (CdiUtil.validateBeanDefinition(context, Produces.class, currentClass)) {
             return;
         }
+        if (CdiUtil.validateMultipleScopes(context, element)) {
+            return;
+        }
         if (CdiUtil.validateProducerType(context, element.getGenericReturnType(), element)) {
             return;
         }
@@ -80,6 +83,9 @@ public class ProducesVisitor implements TypeElementVisitor<Object, Produces> {
     @Override
     public void visitField(FieldElement element, VisitorContext context) {
         if (CdiUtil.validateBeanDefinition(context, Produces.class, currentClass)) {
+            return;
+        }
+        if (CdiUtil.validateMultipleScopes(context, element)) {
             return;
         }
         if (CdiUtil.validateProducerType(context, element.getGenericField(), element)) {

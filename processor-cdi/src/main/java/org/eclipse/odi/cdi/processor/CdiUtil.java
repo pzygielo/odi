@@ -15,6 +15,7 @@
  */
 package org.eclipse.odi.cdi.processor;
 
+import io.micronaut.context.annotation.Factory;
 import io.micronaut.core.annotation.AnnotationMetadata;
 import io.micronaut.core.annotation.AnnotationClassValue;
 import io.micronaut.core.annotation.AnnotationValue;
@@ -52,6 +53,7 @@ import jakarta.enterprise.inject.Stereotype;
 import jakarta.enterprise.inject.spi.Bean;
 import jakarta.enterprise.inject.spi.InjectionPoint;
 import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 import jakarta.interceptor.Interceptor;
 
 import java.lang.annotation.Annotation;
@@ -801,6 +803,34 @@ public final class CdiUtil {
             return true;
         }
         return false;
+    }
+
+    public static boolean validateMultipleScopes(VisitorContext context, Element element) {
+        List<String> declaredScopes = new ArrayList<>();
+        for (String annotationName : element.getDeclaredAnnotationNames()) {
+            if (isScopeAnnotation(context, annotationName)) {
+                declaredScopes.add(annotationName);
+            }
+        }
+        if (element.hasDeclaredAnnotation(Factory.class)) {
+            declaredScopes.remove(Singleton.class.getName());
+            declaredScopes.remove(jakarta.enterprise.context.Dependent.class.getName());
+        }
+        if (declaredScopes.size() > 1) {
+            context.fail("Bean declares more than one scope: " + toAnnotationDescription(declaredScopes), element);
+            return true;
+        }
+        return false;
+    }
+
+    private static boolean isScopeAnnotation(VisitorContext context, String annotationName) {
+        if (annotationName.equals(jakarta.enterprise.context.Dependent.class.getName())) {
+            return true;
+        }
+        return context.getClassElement(annotationName)
+                .map(annotation -> annotation.hasDeclaredAnnotation(jakarta.enterprise.context.NormalScope.class.getName())
+                        || annotation.hasDeclaredAnnotation(jakarta.inject.Scope.class.getName()))
+                .orElse(false);
     }
 
     public static boolean validateNormalScopeFinalClass(VisitorContext context, ClassElement classElement) {

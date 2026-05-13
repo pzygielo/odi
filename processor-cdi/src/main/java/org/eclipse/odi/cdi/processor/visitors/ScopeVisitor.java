@@ -38,6 +38,9 @@ public class ScopeVisitor implements TypeElementVisitor<Object, Object> {
             }
         }
         if (element.hasStereotype(AnnotationUtil.SCOPE)) {
+            if (CdiUtil.validateMultipleScopes(context, element)) {
+                return;
+            }
             if (CdiUtil.validateGenericBeanScope(context, element)) {
                 return;
             }

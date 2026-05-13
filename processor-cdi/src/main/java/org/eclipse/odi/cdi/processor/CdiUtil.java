@@ -97,9 +97,10 @@ public final class CdiUtil {
 
     public static boolean validateNoInterceptor(VisitorContext context,
                                                 Class<? extends Annotation> annotationType,
-                                                MethodElement methodElement) {
-        if (methodElement.getOwningType().hasDeclaredAnnotation(Interceptor.class)) {
-            context.fail("Interceptors cannot have methods annotated with @" + annotationType.getSimpleName(), methodElement);
+                                                MemberElement memberElement) {
+        if (memberElement.getOwningType().hasDeclaredAnnotation(Interceptor.class)) {
+            String memberKind = memberElement instanceof FieldElement ? "fields" : "methods";
+            context.fail("Interceptors cannot have " + memberKind + " annotated with @" + annotationType.getSimpleName(), memberElement);
             return true;
         }
         return false;

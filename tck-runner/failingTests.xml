@@ -196,11 +196,6 @@
                     <exclude name=".*"/>
                 </methods>
             </class>
-            <class name="org.jboss.cdi.tck.tests.implementation.producer.field.definition.broken.interceptor.ProducerFieldOnInterceptorTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
             <class name="org.jboss.cdi.tck.tests.implementation.producer.field.definition.broken.wildcard.ProducerFieldTypeWithWildcardTest">
                 <methods>
                     <exclude name=".*"/>

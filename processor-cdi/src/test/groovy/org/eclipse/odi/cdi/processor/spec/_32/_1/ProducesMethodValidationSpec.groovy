@@ -92,4 +92,28 @@ class Shop {
         def e = thrown(RuntimeException)
         e.message.contains("Interceptors cannot have methods annotated with @Produces")
     }
+
+    void "test fail compilation for produces annotation on field in interceptor"() {
+        when:
+        buildBeanDefinition('test.Shop', """
+package test;
+
+import jakarta.enterprise.inject.*;
+import jakarta.interceptor.*;
+
+@Interceptor
+class Shop {
+    @Produces
+    String bean = "test";
+
+    @AroundInvoke
+    Object intercept(InvocationContext context) throws Exception {
+        return context.proceed();
+    }
+}
+""")
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains("Interceptors cannot have fields annotated with @Produces")
+    }
 }

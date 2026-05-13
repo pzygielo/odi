@@ -79,6 +79,9 @@ public class ProducesVisitor implements TypeElementVisitor<Object, Produces> {
         if (CdiUtil.validateBeanDefinition(context, Produces.class, currentClass)) {
             return;
         }
+        if (CdiUtil.validateNoInterceptor(context, Produces.class, element)) {
+            return;
+        }
         if (CdiUtil.validateField(context, Produces.class, element)) {
             return;
         }

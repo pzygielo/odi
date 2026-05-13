@@ -200,4 +200,68 @@ class Shop<T> {
 }
 """)
     }
+
+    void "test fail compilation for non dependent producer method with array return type"() {
+        when:
+        buildBeanDefinition('test.Shop', """
+package test;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.context.RequestScoped;
+import jakarta.enterprise.inject.Produces;
+
+@Dependent
+class Shop {
+    @Produces
+    @RequestScoped
+    String[] getBean() {
+        return new String[0];
+    }
+}
+""")
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains("Producer types that are primitive or arrays must have @Dependent scope")
+    }
+
+    void "test fail compilation for non dependent producer method with primitive return type"() {
+        when:
+        buildBeanDefinition('test.Shop', """
+package test;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.context.RequestScoped;
+import jakarta.enterprise.inject.Produces;
+
+@Dependent
+class Shop {
+    @Produces
+    @RequestScoped
+    int getBean() {
+        return 0;
+    }
+}
+""")
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains("Producer types that are primitive or arrays must have @Dependent scope")
+    }
+
+    void "test dependent producer method with primitive return type compiles"() {
+        expect:
+        buildBeanDefinition('test.Shop', """
+package test;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.inject.Produces;
+
+@Dependent
+class Shop {
+    @Produces
+    int getBean() {
+        return 0;
+    }
+}
+""")
+    }
 }

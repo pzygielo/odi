@@ -871,6 +871,13 @@ public final class CdiUtil {
             context.fail("Producer types with type variables must have @Dependent scope", producerElement);
             return true;
         }
+        if (!hasDependentScope(producerElement, context) && (producerType.isPrimitive() || producerType.isArray())) {
+            context.fail(
+                    DEPLOYMENT_EXCEPTION_MARKER + "Producer types that are primitive or arrays must have @Dependent scope",
+                    producerElement
+            );
+            return true;
+        }
         return false;
     }
 

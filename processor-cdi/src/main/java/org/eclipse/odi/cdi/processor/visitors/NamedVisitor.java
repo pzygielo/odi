@@ -51,6 +51,10 @@ public class NamedVisitor implements TypeElementVisitor<Object, Object> {
 
     private void validateElement(Element element, VisitorContext context) {
         if (element.hasAnnotation(AnnotationUtil.ANN_NAME) || element.hasStereotype(AnnotationUtil.ANN_NAME)) {
+            if (element instanceof ParameterElement && element.stringValue(AnnotationUtil.ANN_NAME).isEmpty()) {
+                context.fail("@Named injection points that are not fields must specify a value", element);
+                return;
+            }
             element.stringValue(AnnotationUtil.ANN_NAME).ifPresent((name) -> validateIdentifier(name, element, context));
             // now validate stereotypes are correct
             // stereotypes can only have an empty @Named qualifier

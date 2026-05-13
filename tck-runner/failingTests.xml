@@ -325,16 +325,6 @@
                     <exclude name=".*"/>
                 </methods>
             </class>
-            <class name="org.jboss.cdi.tck.tests.lookup.byname.broken.injectionPointWithNamed3.NamedNonFieldInjectionPointTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.lookup.byname.broken.injectionPointWithNamed.NamedNonFieldInjectionPointTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
             <class name="org.jboss.cdi.tck.tests.lookup.byname.broken.prefix.ExpandedNamePrefixTest">
                 <methods>
                     <exclude name=".*"/>
@@ -346,11 +336,6 @@
                 </methods>
             </class>
             <class name="org.jboss.cdi.tck.tests.lookup.byname.broken.prefix.ExpandedNamePrefix2Test">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.lookup.byname.broken.injectionPointWithNamed2.NamedNonFieldInjectionPointTest">
                 <methods>
                     <exclude name=".*"/>
                 </methods>

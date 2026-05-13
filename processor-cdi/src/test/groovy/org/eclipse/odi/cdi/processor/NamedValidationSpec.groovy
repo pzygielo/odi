@@ -53,4 +53,54 @@ final class Test {
         where:
         name << ["com.acme.settings", "orderManager"]
     }
+
+    void 'test parameter injection point with implicit named fails'() {
+        when:
+        buildBeanDefinition('named.Test', '''
+package named;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.inject.Inject;
+import jakarta.inject.Named;
+
+@Dependent
+class Test {
+    @Inject
+    void init(@Named Bar bar) {
+    }
+}
+
+@Named
+@Dependent
+class Bar {
+}
+''')
+
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains("@Named injection points that are not fields must specify a value")
+    }
+
+    void 'test parameter injection point with explicit named compiles'() {
+        expect:
+        buildBeanDefinition('named.Test', '''
+package named;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.inject.Inject;
+import jakarta.inject.Named;
+
+@Dependent
+class Test {
+    @Inject
+    void init(@Named("bar") Bar bar) {
+    }
+}
+
+@Named("bar")
+@Dependent
+class Bar {
+}
+''')
+    }
 }

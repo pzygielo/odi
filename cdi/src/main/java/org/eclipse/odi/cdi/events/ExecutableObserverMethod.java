@@ -22,8 +22,6 @@ import io.micronaut.inject.ExecutableMethod;
 import org.eclipse.odi.cdi.AnnotationUtils;
 import jakarta.enterprise.event.ObserverException;
 import jakarta.enterprise.event.Reception;
-import jakarta.enterprise.context.Dependent;
-import jakarta.enterprise.context.spi.Context;
 import jakarta.enterprise.inject.spi.Bean;
 import jakarta.enterprise.inject.spi.EventContext;
 import jakarta.enterprise.inject.spi.EventMetadata;
@@ -112,10 +110,11 @@ final class ExecutableObserverMethod<B, E> extends AbstractOdiObserverMethod<E> 
     }
 
     private void notify(E event, EventContext eventContext) {
-        if (getReception() == Reception.IF_EXISTS && !beanContainer.getBeanContext().containsBean(beanDefinition.asArgument())) {
+        Bean<?> declaringBean = getObserverBean();
+        if (getReception() == Reception.IF_EXISTS && !ObserverMethodContext.hasExistingContextualInstance(beanContainer, declaringBean)) {
             return;
         }
-        if (!staticMethod && !isObserverContextActive()) {
+        if (!staticMethod && !ObserverMethodContext.isActive(beanContainer, declaringBean)) {
             return;
         }
         try {
@@ -152,13 +151,8 @@ final class ExecutableObserverMethod<B, E> extends AbstractOdiObserverMethod<E> 
         }
     }
 
-    private boolean isObserverContextActive() {
-        Bean<?> bean = getDeclaringBean();
-        Class<? extends Annotation> scope = bean.getScope();
-        if (scope == Dependent.class) {
-            return true;
-        }
-        return beanContainer.getContexts(scope).stream().anyMatch(Context::isActive);
+    private Bean<?> getObserverBean() {
+        return beanContainer.getBean(beanDefinition);
     }
 
     @Override

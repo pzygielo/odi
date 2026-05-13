@@ -149,7 +149,8 @@ final class SyntheticObserverMethod<B, E> extends AbstractOdiObserverMethod<E> {
     }
 
     private void notify(E event, @Nullable EventContext<E> eventContext) {
-        if (getReception() == Reception.IF_EXISTS && !beanContext.containsBean(syntheticObserverBeanDefinition.asArgument())) {
+        Bean<?> declaringBean = getDeclaringBean();
+        if (getReception() == Reception.IF_EXISTS && !ObserverMethodContext.hasExistingContextualInstance(beanContainer, declaringBean)) {
             return;
         }
 

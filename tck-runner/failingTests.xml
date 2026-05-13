@@ -128,13 +128,6 @@
                     <exclude name=".*"/>
                 </methods>
             </class>
-            <!-- Support skipping listeners if scoped bean is missing -->
-            <class name="org.jboss.cdi.tck.tests.event.observer.conditional.ConditionalObserverTest">
-                <methods>
-                    <exclude name="testAsyncConditionalObserver"/>
-                    <exclude name="testConditionalObserver"/>
-                </methods>
-            </class>
             <!--            Cannot apply AOP advice to final class-->
             <class name="org.jboss.cdi.tck.tests.implementation.simple.lifecycle.unproxyable.UnproxyableManagedBeanTest">
                 <methods>

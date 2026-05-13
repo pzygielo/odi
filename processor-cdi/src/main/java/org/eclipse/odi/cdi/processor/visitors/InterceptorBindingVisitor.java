@@ -39,6 +39,7 @@ import java.lang.annotation.Annotation;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Processes {@link InterceptorBinding} elements to correctly handle it using Micronaut.
@@ -92,13 +93,16 @@ public class InterceptorBindingVisitor implements TypeElementVisitor<Object, Int
         );
 
         boolean hasClassInterceptorBinding = !element.getAnnotationNamesByStereotype(InterceptorBinding.class).isEmpty();
-        boolean hasBusinessMethods = allMethods.stream().anyMatch(this::isBusinessMethod);
-        boolean hasBoundBusinessMethod = allMethods.stream()
+        List<MethodElement> businessMethods = allMethods.stream()
                 .filter(this::isBusinessMethod)
-                .anyMatch(this::hasInterceptorBinding);
-        boolean hasClassOrMethodInterceptorBinding = (hasClassInterceptorBinding && hasBusinessMethods)
-                || hasBoundBusinessMethod
-                || !selfInterceptorMethods.isEmpty();
+                .collect(Collectors.toList());
+        boolean hasSelfInterceptorMethods = !selfInterceptorMethods.isEmpty();
+        List<MethodElement> interceptedBusinessMethods = businessMethods.stream()
+                .filter(method -> hasClassInterceptorBinding || hasSelfInterceptorMethods || hasInterceptorBinding(method))
+                .collect(Collectors.toList());
+        boolean hasBoundBusinessMethod = businessMethods.stream().anyMatch(this::hasInterceptorBinding);
+        boolean hasClassOrMethodInterceptorBinding = !interceptedBusinessMethods.isEmpty()
+                || hasSelfInterceptorMethods;
 
         if (hasClassInterceptorBinding
                 || hasBoundBusinessMethod
@@ -108,14 +112,17 @@ public class InterceptorBindingVisitor implements TypeElementVisitor<Object, Int
         }
 
         if (hasClassOrMethodInterceptorBinding) {
+            if (CdiUtil.validateInterceptedBeanProxyability(context, element, interceptedBusinessMethods)) {
+                return;
+            }
             if (CdiUtil.validateInterceptedBeanConstructor(context, element)) {
                 return;
             }
-            element.annotate(Around.class, builder -> {
-                builder
-                        .member("proxyTarget", true)
-                        .member("cacheableLazyTarget", true).build();
-            });
+            if (hasClassInterceptorBinding || hasSelfInterceptorMethods) {
+                annotateAround(element);
+            } else {
+                interceptedBusinessMethods.forEach(InterceptorBindingVisitor::annotateAround);
+            }
         }
 
         selfInterceptorMethods.forEach(methodElement -> {
@@ -140,6 +147,12 @@ public class InterceptorBindingVisitor implements TypeElementVisitor<Object, Int
         constructor.annotate(OdiConstructorTarget.class, builder -> builder
                 .member("value", new AnnotationClassValue<>(constructor.getDeclaringType().getName()))
                 .member("additionalProxyParameters", ADDITIONAL_PROXY_CONSTRUCTOR_PARAMETERS));
+    }
+
+    private static void annotateAround(Element element) {
+        element.annotate(Around.class, builder -> builder
+                .member("proxyTarget", true)
+                .member("cacheableLazyTarget", true));
     }
 
     static void removeInheritedMethodInterceptorBindings(MethodElement methodElement) {

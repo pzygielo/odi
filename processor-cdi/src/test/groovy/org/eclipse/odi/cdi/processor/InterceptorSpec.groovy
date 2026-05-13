@@ -153,4 +153,153 @@ class MonitoringInterceptor {
 @interface Monitored {}
 ''')
     }
+
+    void 'test fail compilation for non-dependent interceptor'() {
+        when:
+        buildContext('''
+package intertest;
+
+import jakarta.enterprise.context.RequestScoped;
+import jakarta.interceptor.*;
+import java.lang.annotation.*;
+import static java.lang.annotation.ElementType.*;
+import static java.lang.annotation.RetentionPolicy.*;
+
+@RequestScoped
+@Monitored
+@Interceptor
+class MonitoringInterceptor {
+    @AroundInvoke
+    public Object monitorInvocation(InvocationContext ctx) throws Exception {
+        return ctx.proceed();
+    }
+}
+
+@Inherited
+@InterceptorBinding
+@Target({TYPE, METHOD})
+@Retention(RUNTIME)
+@interface Monitored {}
+''')
+
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains('Interceptors must have @Dependent scope')
+    }
+
+    void 'test fail compilation for intercepted final class'() {
+        when:
+        buildContext('''
+package intertest;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.interceptor.*;
+import java.lang.annotation.*;
+import static java.lang.annotation.ElementType.*;
+import static java.lang.annotation.RetentionPolicy.*;
+
+@Monitored
+@Dependent
+final class Test {
+    public void test() {
+    }
+}
+
+@Monitored
+@Interceptor
+class MonitoringInterceptor {
+    @AroundInvoke
+    public Object monitorInvocation(InvocationContext ctx) throws Exception {
+        return ctx.proceed();
+    }
+}
+
+@Inherited
+@InterceptorBinding
+@Target({TYPE, METHOD})
+@Retention(RUNTIME)
+@interface Monitored {}
+''')
+
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains('Intercepted bean classes must not be final')
+    }
+
+    void 'test fail compilation for intercepted final business method'() {
+        when:
+        buildContext('''
+package intertest;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.interceptor.*;
+import java.lang.annotation.*;
+import static java.lang.annotation.ElementType.*;
+import static java.lang.annotation.RetentionPolicy.*;
+
+@Monitored
+@Dependent
+class Test {
+    public final void test() {
+    }
+}
+
+@Monitored
+@Interceptor
+class MonitoringInterceptor {
+    @AroundInvoke
+    public Object monitorInvocation(InvocationContext ctx) throws Exception {
+        return ctx.proceed();
+    }
+}
+
+@Inherited
+@InterceptorBinding
+@Target({TYPE, METHOD})
+@Retention(RUNTIME)
+@interface Monitored {}
+''')
+
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains('Intercepted bean methods must not be non-private final methods')
+    }
+
+    void 'test final method not bound to interceptor compiles'() {
+        expect:
+        buildContext('''
+package intertest;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.interceptor.*;
+import java.lang.annotation.*;
+import static java.lang.annotation.ElementType.*;
+import static java.lang.annotation.RetentionPolicy.*;
+
+@Dependent
+class Test {
+    @Monitored
+    public void test() {
+    }
+
+    public final void helper() {
+    }
+}
+
+@Monitored
+@Interceptor
+class MonitoringInterceptor {
+    @AroundInvoke
+    public Object monitorInvocation(InvocationContext ctx) throws Exception {
+        return ctx.proceed();
+    }
+}
+
+@Inherited
+@InterceptorBinding
+@Target({TYPE, METHOD})
+@Retention(RUNTIME)
+@interface Monitored {}
+''')
+    }
 }

@@ -835,6 +835,36 @@ public final class CdiUtil {
         return false;
     }
 
+    public static boolean validateInterceptorDependentScope(VisitorContext context, ClassElement classElement) {
+        if (classElement.hasStereotype(Interceptor.class) && !hasDependentScope(classElement, context)) {
+            context.fail("Interceptors must have @Dependent scope", classElement);
+            return true;
+        }
+        return false;
+    }
+
+    public static boolean validateInterceptedBeanProxyability(VisitorContext context,
+                                                              ClassElement classElement,
+                                                              List<MethodElement> interceptedMethods) {
+        if (classElement.isFinal()) {
+            context.fail(
+                    DEPLOYMENT_EXCEPTION_MARKER + "Intercepted bean classes must not be final",
+                    classElement
+            );
+            return true;
+        }
+        for (MethodElement method : interceptedMethods) {
+            if (method.isFinal() && !method.isPrivate() && !method.isStatic() && !method.isSynthetic()) {
+                context.fail(
+                        DEPLOYMENT_EXCEPTION_MARKER + "Intercepted bean methods must not be non-private final methods",
+                        method
+                );
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static boolean hasNonPrivateNoArgsConstructor(ClassElement classElement) {
         return classElement.getAccessibleConstructors()
                 .stream()

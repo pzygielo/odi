@@ -33,6 +33,7 @@ import jakarta.annotation.PreDestroy;
 import jakarta.interceptor.AroundConstruct;
 import jakarta.interceptor.AroundInvoke;
 import jakarta.interceptor.Interceptor;
+import org.eclipse.odi.cdi.processor.CdiUtil;
 
 import java.lang.annotation.Annotation;
 import java.util.ArrayList;
@@ -81,6 +82,9 @@ public class InterceptorVisitor implements TypeElementVisitor<Interceptor, Objec
                                                     VisitorContext context,
                                                     ClassElement interceptorBean,
                                                     boolean isSelfInterceptor) {
+        if (CdiUtil.validateInterceptorDependentScope(context, interceptorBean)) {
+            return null;
+        }
         InterceptorBindingVisitor.addNestedInterceptorBindings(
                 interceptorBean,
                 interceptorBean.getAnnotationMetadata(),

@@ -47,7 +47,7 @@ public class InjectVisitor implements TypeElementVisitor<Object, Object> {
 
     @Override
     public Set<String> getSupportedOptions() {
-        return Collections.singleton(CdiUtil.BEAN_CLASSES_OPTION);
+        return Set.of(CdiUtil.BEAN_CLASSES_OPTION, CdiUtil.BUILD_COMPATIBLE_EXTENSIONS_OPTION);
     }
 
     @Override
@@ -112,6 +112,8 @@ public class InjectVisitor implements TypeElementVisitor<Object, Object> {
             if (CdiUtil.validateMethodNoSpecialParameters(context, "Inject", element, parameter)) {
                 return;
             }
+        }
+        for (ParameterElement parameter : element.getParameters()) {
             if (CdiUtil.validateInjectedType(context, parameter.getGenericType(), parameter)) {
                 return;
             }

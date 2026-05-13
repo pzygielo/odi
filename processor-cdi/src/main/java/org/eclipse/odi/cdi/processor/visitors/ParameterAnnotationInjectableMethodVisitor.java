@@ -29,6 +29,7 @@ import org.eclipse.odi.cdi.processor.CdiUtil;
 import java.lang.annotation.Annotation;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 abstract class ParameterAnnotationInjectableMethodVisitor<T extends Annotation> implements TypeElementVisitor<Object, Object> {
@@ -41,6 +42,11 @@ abstract class ParameterAnnotationInjectableMethodVisitor<T extends Annotation> 
     }
 
     protected abstract Class<T> getParameterAnnotation();
+
+    @Override
+    public Set<String> getSupportedOptions() {
+        return Set.of(CdiUtil.BEAN_CLASSES_OPTION, CdiUtil.BUILD_COMPATIBLE_EXTENSIONS_OPTION);
+    }
 
     protected void disqualifyMethod(MethodElement element) {
         element.removeAnnotation(getParameterAnnotation());
@@ -81,9 +87,13 @@ abstract class ParameterAnnotationInjectableMethodVisitor<T extends Annotation> 
             if (CdiUtil.validateParameterExtraAnnotations(context, getParameterAnnotation(), element, parameter)) {
                 return;
             }
-            if (!parameter.hasDeclaredAnnotation(getParameterAnnotation())
-                    && CdiUtil.validateInjectedType(context, parameter.getGenericType(), parameter)) {
-                return;
+            if (!parameter.hasDeclaredAnnotation(getParameterAnnotation())) {
+                if (CdiUtil.validateInjectedType(context, parameter.getGenericType(), parameter)) {
+                    return;
+                }
+                if (CdiUtil.visitInjectPoint(context, parameter)) {
+                    return;
+                }
             }
             if (validateParameter(element, parameter, context)) {
                 return;

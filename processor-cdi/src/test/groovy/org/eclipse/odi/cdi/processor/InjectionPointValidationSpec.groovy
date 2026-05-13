@@ -149,10 +149,9 @@ import jakarta.enterprise.context.Dependent;
 import jakarta.inject.Inject;
 
 @Dependent
-class Consumer {
+class Consumer<T extends Animal> {
     @Inject
-    <T extends Animal> void setAnimal(T animal) {
-    }
+    T animal;
 }
 
 interface Animal {
@@ -185,6 +184,84 @@ class Box<T extends Animal> {
 interface Animal {
 }
 ''')
+    }
+
+    void "test explicit any injection point compiles with exhaustive bean classes"() {
+        expect:
+        withBeanClasses('anyqualifier.Customer,anyqualifier.Drink') {
+            buildBeanDefinition('anyqualifier.Customer', '''
+package anyqualifier;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.inject.Any;
+import jakarta.inject.Inject;
+
+@Dependent
+class Customer {
+    @Inject
+    @Any
+    Drink drink;
+}
+
+@Dependent
+class Drink {
+}
+''')
+        }
+    }
+
+    void "test explicit any parameterized injection point compiles with exhaustive bean classes"() {
+        expect:
+        withBeanClasses('anyparameterized.Consumer,anyparameterized.GenericInterfaceBarFooImpl') {
+            buildBeanDefinition('anyparameterized.Consumer', '''
+package anyparameterized;
+
+import static java.lang.annotation.ElementType.FIELD;
+import static java.lang.annotation.ElementType.TYPE;
+import static java.lang.annotation.RetentionPolicy.RUNTIME;
+
+import java.lang.annotation.Retention;
+import java.lang.annotation.Target;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.inject.Any;
+import jakarta.inject.Inject;
+import jakarta.inject.Qualifier;
+
+@Dependent
+class Consumer {
+    @Inject
+    @Any
+    GenericInterface<BarFooImpl> value;
+}
+
+interface GenericInterface<T> {
+}
+
+@Custom
+@Dependent
+class GenericInterfaceBarFooImpl<T extends Bar & Foo> implements GenericInterface<T> {
+}
+
+class BarFooImpl extends BarImpl implements Foo {
+}
+
+class BarImpl implements Bar {
+}
+
+interface Bar {
+}
+
+interface Foo {
+}
+
+@Target({ TYPE, FIELD })
+@Retention(RUNTIME)
+@Qualifier
+@interface Custom {
+}
+''')
+        }
     }
 
     void "test type variable observer event parameter compiles"() {
@@ -228,6 +305,58 @@ class Base<T extends Animal> {
 interface Animal {
 }
 ''')
+    }
+
+    void "test invalid initializer special parameter does not report dependency resolution errors"() {
+        when:
+        buildBeanDefinition('invalidinitializer.Consumer', '''
+package invalidinitializer;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.event.Observes;
+import jakarta.inject.Inject;
+
+@Dependent
+class Consumer {
+    @Inject
+    void init(String name, @Observes Event event) {
+    }
+}
+
+class Event {
+}
+''')
+
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains("Methods annotated with @Inject cannot define parameters annotated with @Observes")
+        !e.message.contains("Unsatisfied dependency")
+    }
+
+    void "test multiple inject constructors do not report dependency resolution errors"() {
+        when:
+        buildBeanDefinition('multipleinjectconstructors.Consumer', '''
+package multipleinjectconstructors;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.inject.Inject;
+
+@Dependent
+class Consumer {
+    @Inject
+    Consumer(String name) {
+    }
+
+    @Inject
+    Consumer(String name, Integer value) {
+    }
+}
+''')
+
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains("More than one constructor annotated with @Inject found")
+        !e.message.contains("Unsatisfied dependency")
     }
 
     void "test injection point metadata in normal scoped bean fails"() {
@@ -297,5 +426,19 @@ class Factory {
 class Product {
 }
 ''')
+    }
+
+    private static Object withBeanClasses(String classNames, Closure<?> closure) {
+        String previous = System.getProperty(CdiUtil.BEAN_CLASSES_OPTION)
+        System.setProperty(CdiUtil.BEAN_CLASSES_OPTION, classNames)
+        try {
+            return closure.call()
+        } finally {
+            if (previous == null) {
+                System.clearProperty(CdiUtil.BEAN_CLASSES_OPTION)
+            } else {
+                System.setProperty(CdiUtil.BEAN_CLASSES_OPTION, previous)
+            }
+        }
     }
 }

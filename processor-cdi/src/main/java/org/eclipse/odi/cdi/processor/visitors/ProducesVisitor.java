@@ -49,7 +49,7 @@ public class ProducesVisitor implements TypeElementVisitor<Object, Produces> {
 
     @Override
     public Set<String> getSupportedOptions() {
-        return Set.of(CdiUtil.BEAN_CLASSES_OPTION);
+        return Set.of(CdiUtil.BEAN_CLASSES_OPTION, CdiUtil.BUILD_COMPATIBLE_EXTENSIONS_OPTION);
     }
 
     @Override

@@ -73,6 +73,7 @@ import java.util.stream.Collectors;
 public final class CdiUtil {
     public static final String SPEC_LOCATION = "https://jakarta.ee/specifications/cdi/3.0/jakarta-cdi-spec-3.0.html";
     public static final String BEAN_CLASSES_OPTION = "micronaut.cdi.bean.classes";
+    public static final String BUILD_COMPATIBLE_EXTENSIONS_OPTION = "micronaut.cdi.build.compatible.extensions";
     private static final String DEPLOYMENT_EXCEPTION_MARKER = "[ODI_DEPLOYMENT_EXCEPTION] ";
 
     private CdiUtil() {
@@ -297,7 +298,9 @@ public final class CdiUtil {
 
     private static boolean needsDefaultInjectPointQualifier(AnnotationMetadata annotationMetadata) {
         AnnotationMetadata declaredMetadata = annotationMetadata.getDeclaredMetadata();
-        return !declaredMetadata.hasDeclaredStereotype(AnnotationUtil.QUALIFIER);
+        return !declaredMetadata.hasDeclaredStereotype(AnnotationUtil.QUALIFIER)
+                && !declaredMetadata.hasDeclaredAnnotation(Any.class)
+                && !declaredMetadata.hasDeclaredAnnotation(io.micronaut.context.annotation.Any.class);
     }
 
     public static void visitBeanDefinition(VisitorContext context, Element beanDefinition) {
@@ -514,6 +517,7 @@ public final class CdiUtil {
     }
 
     public static boolean visitInjectPoint(VisitorContext context, TypedElement injectPoint) {
+        boolean declaredAnyWithoutDefault = isDeclaredAnyWithoutDefault(injectPoint);
         if (needsDefaultInjectPointQualifier(injectPoint.getAnnotationMetadata())) {
             injectPoint.annotate(Default.class);
         }
@@ -526,7 +530,7 @@ public final class CdiUtil {
         if (CdiUtil.validateInjectionPointMetadata(context, injectPointType, injectPoint)) {
             return true;
         }
-        return validateResolvableInjectionPoint(context, injectPointType, injectPoint);
+        return validateResolvableInjectionPoint(context, injectPointType, injectPoint, declaredAnyWithoutDefault);
     }
 
     private static void visitRequiredType(TypedElement injectPoint) {
@@ -974,23 +978,39 @@ public final class CdiUtil {
 
     private static boolean validateResolvableInjectionPoint(VisitorContext context,
                                                             ClassElement injectPointType,
-                                                            TypedElement injectPoint) {
-        if (!isRawGenericType(injectPointType) || !hasOnlyDefaultQualifier(context, injectPoint)) {
+                                                            TypedElement injectPoint,
+                                                            boolean declaredAnyWithoutDefault) {
+        Set<String> configuredBeanClasses = configuredBeanClasses(context);
+        boolean exhaustiveBeanClasses = !configuredBeanClasses.isEmpty();
+        if (isBuildCompatibleExtensionDeployment(context)
+                || isBuiltInInjectionPointType(injectPointType)
+                || injectPointType.isPrimitive()
+                || declaredAnyWithoutDefault
+                || hasComplexTypeArguments(injectPointType)
+                || (!exhaustiveBeanClasses && !isRawGenericType(injectPointType))
+                || hasRequiredQualifierMembers(context, injectPoint)
+                || hasKnownDefinitionError(injectPoint)) {
             return false;
         }
-        Set<ClassElement> candidates = new LinkedHashSet<>();
-        for (ClassElement candidate : candidateBeanClasses(context, injectPointType, injectPoint)) {
-            if (isResolvableBeanClass(context, candidate)
-                    && hasOnlyDefaultQualifier(context, candidate)
-                    && hasBeanTypeAssignableToRawRequiredType(injectPointType, candidate)) {
-                candidates.add(candidate);
-            }
+        Set<ResolvableCandidate> candidates = new LinkedHashSet<>();
+        addManagedBeanCandidate(context, injectPointType, injectPoint, injectPointType, candidates);
+        for (ClassElement candidate : candidateBeanClasses(context, injectPointType, injectPoint, configuredBeanClasses)) {
+            addManagedBeanCandidate(context, injectPointType, injectPoint, candidate, candidates);
+            addProducerCandidates(context, injectPointType, injectPoint, candidate, candidates);
+        }
+        if (candidates.isEmpty() && exhaustiveBeanClasses) {
+            context.fail(DEPLOYMENT_EXCEPTION_MARKER
+                    + "Unsatisfied dependency for injection point of type " + injectPointType.getName(), injectPoint);
+            return true;
         }
         if (candidates.size() > 1) {
+            if (hasTypeArguments(injectPointType, false) || candidates.stream().anyMatch(ResolvableCandidate::requiresRuntimeResolution)) {
+                return false;
+            }
             context.fail(DEPLOYMENT_EXCEPTION_MARKER
                     + "Ambiguous dependency for injection point of type " + injectPointType.getName()
                     + ". Candidate beans: " + candidates.stream()
-                    .map(ClassElement::getName)
+                    .map(ResolvableCandidate::description)
                     .sorted()
                     .collect(Collectors.joining(", ")), injectPoint);
             return true;
@@ -998,10 +1018,71 @@ public final class CdiUtil {
         return false;
     }
 
+    private static void addManagedBeanCandidate(VisitorContext context,
+                                                ClassElement injectPointType,
+                                                TypedElement injectPoint,
+                                                ClassElement candidate,
+                                                Set<ResolvableCandidate> candidates) {
+        if (isResolvableBeanClass(context, candidate)
+                && matchesRequiredQualifiers(context, injectPoint, candidate)
+                && hasBeanTypeAssignableToRequiredType(injectPointType, candidate)) {
+            candidates.add(new ResolvableCandidate(candidate.getName(), false, requiresRuntimeResolution(candidate)));
+        }
+    }
+
+    private static void addProducerCandidates(VisitorContext context,
+                                              ClassElement injectPointType,
+                                              TypedElement injectPoint,
+                                              ClassElement candidate,
+                                              Set<ResolvableCandidate> candidates) {
+        if (!isProducerDeclaringBeanClass(context, candidate)) {
+            return;
+        }
+        candidate.getEnclosedElements(ElementQuery.ALL_METHODS
+                .onlyDeclared()
+                .onlyConcrete()
+                .annotated(annotationMetadata -> annotationMetadata.hasDeclaredAnnotation(Produces.class)))
+                .forEach(method -> addProducerCandidate(
+                        context,
+                        injectPointType,
+                        injectPoint,
+                        method.getGenericReturnType(),
+                        method,
+                        candidates
+                ));
+        candidate.getEnclosedElements(ElementQuery.ALL_FIELDS
+                .onlyDeclared()
+                .annotated(annotationMetadata -> annotationMetadata.hasDeclaredAnnotation(Produces.class)))
+                .forEach(field -> addProducerCandidate(
+                        context,
+                        injectPointType,
+                        injectPoint,
+                        field.getGenericField(),
+                        field,
+                        candidates
+                ));
+    }
+
+    private static void addProducerCandidate(VisitorContext context,
+                                             ClassElement injectPointType,
+                                             TypedElement injectPoint,
+                                             ClassElement producedType,
+                                             MemberElement producer,
+                                             Set<ResolvableCandidate> candidates) {
+        if (matchesRequiredQualifiers(context, injectPoint, producer)
+                && hasBeanTypeAssignableToRequiredType(injectPointType, producedType)) {
+            candidates.add(new ResolvableCandidate(
+                    producer.getDeclaringType().getName() + "." + producer.getName(),
+                    true,
+                    requiresRuntimeResolution(producer) || requiresRuntimeResolution(producer.getDeclaringType()))
+            );
+        }
+    }
+
     private static Collection<ClassElement> candidateBeanClasses(VisitorContext context,
                                                                  ClassElement injectPointType,
-                                                                 TypedElement injectPoint) {
-        Set<String> configuredBeanClasses = configuredBeanClasses(context);
+                                                                 TypedElement injectPoint,
+                                                                 Set<String> configuredBeanClasses) {
         if (!configuredBeanClasses.isEmpty()) {
             List<ClassElement> candidates = new ArrayList<>(configuredBeanClasses.size());
             for (String configuredBeanClass : configuredBeanClasses) {
@@ -1041,6 +1122,127 @@ public final class CdiUtil {
         return packages;
     }
 
+    private static boolean isBuiltInInjectionPointType(ClassElement injectPointType) {
+        String typeName = injectPointType.getName();
+        return typeName.equals(Object.class.getName())
+                || typeName.equals(Bean.class.getName())
+                || typeName.equals(Event.class.getName())
+                || typeName.equals(EventMetadata.class.getName())
+                || typeName.equals(InjectionPoint.class.getName())
+                || typeName.equals(Instance.class.getName())
+                || typeName.equals(jakarta.enterprise.inject.spi.BeanContainer.class.getName())
+                || typeName.equals(jakarta.enterprise.inject.spi.BeanManager.class.getName())
+                || typeName.equals(jakarta.enterprise.inject.spi.Interceptor.class.getName())
+                || typeName.equals(jakarta.inject.Provider.class.getName());
+    }
+
+    private static boolean hasComplexTypeArguments(ClassElement injectPointType) {
+        return hasTypeArguments(injectPointType, false)
+                && (containsTypeVariable(injectPointType) || containsWildcard(injectPointType));
+    }
+
+    private static boolean isBuildCompatibleExtensionDeployment(VisitorContext context) {
+        return Boolean.parseBoolean(context.getOptions().get(BUILD_COMPATIBLE_EXTENSIONS_OPTION));
+    }
+
+    private static boolean isDeclaredAnyWithoutDefault(Element injectPoint) {
+        return hasDeclaredAnyAnnotation(injectPoint)
+                && !injectPoint.hasDeclaredAnnotation(Default.class);
+    }
+
+    private static boolean hasAnyAnnotation(Element element) {
+        return element.hasAnnotation(Any.class)
+                || element.hasAnnotation(io.micronaut.context.annotation.Any.class);
+    }
+
+    private static boolean hasDeclaredAnyAnnotation(Element element) {
+        return element.hasDeclaredAnnotation(Any.class)
+                || element.hasDeclaredAnnotation(io.micronaut.context.annotation.Any.class);
+    }
+
+    private static boolean isProducerDeclaringBeanClass(VisitorContext context, ClassElement candidate) {
+        return !candidate.hasStereotype(Interceptor.class)
+                && !candidate.hasAnnotation(io.micronaut.core.annotation.Vetoed.class)
+                && !candidate.hasAnnotation(jakarta.enterprise.inject.Vetoed.class)
+                && org.eclipse.odi.cdi.processor.AnnotationUtil.hasBeanDefiningAnnotation(candidate)
+                && isBeanClass(candidate);
+    }
+
+    private static boolean requiresRuntimeResolution(Element element) {
+        return element.hasStereotype(jakarta.enterprise.inject.Alternative.class)
+                || element.hasAnnotation(jakarta.enterprise.inject.Alternative.class)
+                || element.hasStereotype(Priority.class)
+                || element.hasAnnotation(Priority.class);
+    }
+
+    private static boolean matchesRequiredQualifiers(VisitorContext context, Element injectPoint, Element candidate) {
+        Set<String> requiredQualifiers = bindingQualifierNames(context, injectPoint);
+        if (requiredQualifiers.isEmpty()) {
+            if (hasAnyAnnotation(injectPoint) && !injectPoint.hasAnnotation(Default.class)) {
+                return true;
+            }
+            Set<String> candidateQualifiers = bindingQualifierNames(context, candidate);
+            return candidate.hasAnnotation(Default.class) || candidateQualifiers.isEmpty();
+        }
+        return bindingQualifierNames(context, candidate).containsAll(requiredQualifiers);
+    }
+
+    private static boolean hasKnownDefinitionError(TypedElement injectPoint) {
+        if (!(injectPoint instanceof ParameterElement)) {
+            return false;
+        }
+        try {
+            MethodElement methodElement = ((ParameterElement) injectPoint).getMethodElement();
+            if (methodElement.hasDeclaredAnnotation(Inject.class) && hasSpecialParameter(methodElement)) {
+                return true;
+            }
+            if (methodElement instanceof ConstructorElement) {
+                return methodElement.getOwningType().getEnclosedElements(ElementQuery.CONSTRUCTORS)
+                        .stream()
+                        .filter(constructor -> constructor.hasDeclaredAnnotation(Inject.class))
+                        .limit(2)
+                        .count() > 1;
+            }
+            return false;
+        } catch (IllegalStateException e) {
+            return false;
+        }
+    }
+
+    private static boolean hasSpecialParameter(MethodElement methodElement) {
+        for (ParameterElement parameter : methodElement.getParameters()) {
+            if (parameter.hasDeclaredAnnotation(Disposes.class)
+                    || parameter.hasDeclaredAnnotation(Observes.class)
+                    || parameter.hasDeclaredAnnotation(ObservesAsync.class)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean hasRequiredQualifierMembers(VisitorContext context, Element injectPoint) {
+        for (String qualifierName : bindingQualifierNames(context, injectPoint)) {
+            AnnotationValue<Annotation> annotation = injectPoint.getAnnotation(qualifierName);
+            if (annotation != null && !annotation.getValues().isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static Set<String> bindingQualifierNames(VisitorContext context, Element element) {
+        Set<String> qualifierNames = new LinkedHashSet<>(element.getAnnotationNamesByStereotype(AnnotationUtil.QUALIFIER));
+        for (String annotationName : element.getAnnotationNames()) {
+            if (isQualifierAnnotation(context, annotationName)) {
+                qualifierNames.add(annotationName);
+            }
+        }
+        qualifierNames.remove(Any.class.getName());
+        qualifierNames.remove(io.micronaut.context.annotation.Any.class.getName());
+        qualifierNames.remove(Default.class.getName());
+        return qualifierNames;
+    }
+
     private static boolean isRawGenericType(ClassElement classElement) {
         return classElement.isRawType()
                 && !classElement.getDeclaredGenericPlaceholders().isEmpty()
@@ -1060,6 +1262,20 @@ public final class CdiUtil {
                 && isBeanClass(candidate);
     }
 
+    private static boolean hasBeanTypeAssignableToRequiredType(ClassElement injectPointType, ClassElement candidateType) {
+        if (isRawGenericType(injectPointType)) {
+            return hasBeanTypeAssignableToRawRequiredType(injectPointType, candidateType);
+        }
+        Set<ClassElement> beanTypes = new LinkedHashSet<>();
+        collectBeanTypes(candidateType, beanTypes);
+        for (ClassElement beanType : beanTypes) {
+            if (injectPointType.getName().equals(beanType.getName())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static boolean hasBeanTypeAssignableToRawRequiredType(ClassElement injectPointType, ClassElement candidate) {
         Set<ClassElement> beanTypes = new LinkedHashSet<>();
         collectBeanTypes(candidate, beanTypes);
@@ -1069,6 +1285,43 @@ public final class CdiUtil {
             }
         }
         return false;
+    }
+
+    private static final class ResolvableCandidate {
+        private final String description;
+        private final boolean producer;
+        private final boolean runtimeResolution;
+
+        private ResolvableCandidate(String description, boolean producer, boolean runtimeResolution) {
+            this.description = description;
+            this.producer = producer;
+            this.runtimeResolution = runtimeResolution;
+        }
+
+        String description() {
+            return description;
+        }
+
+        boolean requiresRuntimeResolution() {
+            return producer || runtimeResolution;
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            if (this == other) {
+                return true;
+            }
+            if (!(other instanceof ResolvableCandidate)) {
+                return false;
+            }
+            ResolvableCandidate that = (ResolvableCandidate) other;
+            return description.equals(that.description);
+        }
+
+        @Override
+        public int hashCode() {
+            return description.hashCode();
+        }
     }
 
     private static boolean isBeanTypeAssignableToRawRequiredType(ClassElement beanType) {
@@ -1173,6 +1426,7 @@ public final class CdiUtil {
             }
         }
         qualifierNames.remove(Any.class.getName());
+        qualifierNames.remove(io.micronaut.context.annotation.Any.class.getName());
         qualifierNames.remove(Default.class.getName());
         qualifierNames.remove(jakarta.inject.Named.class.getName());
         return qualifierNames.isEmpty();
@@ -1185,6 +1439,8 @@ public final class CdiUtil {
                 qualifierNames.add(annotationName);
             }
         }
+        qualifierNames.remove(Any.class.getName());
+        qualifierNames.remove(io.micronaut.context.annotation.Any.class.getName());
         qualifierNames.remove(Default.class.getName());
         return qualifierNames.isEmpty();
     }

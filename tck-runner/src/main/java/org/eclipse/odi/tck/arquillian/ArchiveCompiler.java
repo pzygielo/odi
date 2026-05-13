@@ -48,9 +48,11 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -60,6 +62,13 @@ import java.util.stream.Collectors;
  * be on classpath.
  */
 final class ArchiveCompiler {
+    private static final String BEAN_PACKAGES_OPTION = "micronaut.cdi.bean.packages";
+    private static final Set<String> CDI_PROCESSOR_OPTIONS = Set.of(
+            CdiUtil.BEAN_CLASSES_OPTION,
+            CdiUtil.BUILD_COMPATIBLE_EXTENSIONS_OPTION,
+            BEAN_PACKAGES_OPTION
+    );
+
     private final DeploymentDir deploymentDir;
     private final Archive<?> deploymentArchive;
 
@@ -148,7 +157,7 @@ final class ArchiveCompiler {
             } else {
                 task.setProcessors(getAnnotationProcessors());
             }
-            Boolean success = task.call();
+            Boolean success = callTask(task, args);
             if (!Boolean.TRUE.equals(success)) {
                 outputDiagnostics(diagnostics);
             } else if (hasBuildExtensions) {
@@ -160,8 +169,9 @@ final class ArchiveCompiler {
                 );
                 String packageName = extensionName.substring(0, extensionName.lastIndexOf('.'));
                 args = new ArrayList<>(compileOptions(targetDir, deploymentClassNames));
+                args.add("-A" + CdiUtil.BUILD_COMPATIBLE_EXTENSIONS_OPTION + "=true");
                 if (deploymentArchive.contains("/WEB-INF/beans.xml")) {
-                    args.add("-Amicronaut.cdi.bean.packages=" + packageName);
+                    args.add("-A" + BEAN_PACKAGES_OPTION + "=" + packageName);
                 }
 
                 final Path applicationSource = setupExtensionCompilation(extensionName, packageName);
@@ -185,7 +195,7 @@ final class ArchiveCompiler {
                 });
                 try {
                     enhancementTask.setProcessors(getAnnotationProcessors());
-                    if (!Boolean.TRUE.equals(enhancementTask.call())) {
+                    if (!Boolean.TRUE.equals(callTask(enhancementTask, args))) {
                         outputDiagnostics(diagnostics);
                     }
                 } finally {
@@ -193,6 +203,45 @@ final class ArchiveCompiler {
                 }
             }
         }
+    }
+
+    private static Boolean callTask(JavaCompiler.CompilationTask task, List<String> args) {
+        Map<String, String> previousOptions = new LinkedHashMap<>(CDI_PROCESSOR_OPTIONS.size());
+        for (String option : CDI_PROCESSOR_OPTIONS) {
+            previousOptions.put(option, System.getProperty(option));
+            System.clearProperty(option);
+        }
+        // Micronaut exposes micronaut.* processor options through system properties
+        // as well as javac options. Keep this in-process TCK compiler task-local.
+        for (Map.Entry<String, String> option : processorOptions(args).entrySet()) {
+            if (CDI_PROCESSOR_OPTIONS.contains(option.getKey())) {
+                System.setProperty(option.getKey(), option.getValue());
+            }
+        }
+        try {
+            return task.call();
+        } finally {
+            for (Map.Entry<String, String> option : previousOptions.entrySet()) {
+                if (option.getValue() == null) {
+                    System.clearProperty(option.getKey());
+                } else {
+                    System.setProperty(option.getKey(), option.getValue());
+                }
+            }
+        }
+    }
+
+    private static Map<String, String> processorOptions(List<String> args) {
+        Map<String, String> options = new LinkedHashMap<>();
+        for (String arg : args) {
+            if (arg.startsWith("-A")) {
+                int separator = arg.indexOf('=');
+                String key = separator > 2 ? arg.substring(2, separator) : arg.substring(2);
+                String value = separator > 2 ? arg.substring(separator + 1) : "";
+                options.put(key, value);
+            }
+        }
+        return options;
     }
 
     private static List<String> compileOptions(String targetDir, Collection<String> deploymentClassNames) {

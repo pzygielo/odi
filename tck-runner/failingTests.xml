@@ -152,11 +152,6 @@
                     <exclude name="testConditionalObserver"/>
                 </methods>
             </class>
-            <class name="org.jboss.cdi.tck.tests.event.metadata.broken.initializer.InvalidEventMetadataInjectionPointTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
             <class name="org.jboss.cdi.tck.tests.event.metadata.EventMetadataTest">
                 <methods>
                     <!-- Might be a TCK error, event is of type List but the validation expects ArrayList -->

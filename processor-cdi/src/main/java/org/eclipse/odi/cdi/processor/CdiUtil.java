@@ -36,6 +36,7 @@ import io.micronaut.inject.ast.TypedElement;
 import io.micronaut.inject.ast.WildcardElement;
 import io.micronaut.inject.visitor.VisitorContext;
 import jakarta.annotation.Priority;
+import jakarta.enterprise.inject.spi.EventMetadata;
 import jakarta.enterprise.event.Event;
 import jakarta.enterprise.event.Observes;
 import jakarta.enterprise.event.ObservesAsync;
@@ -621,6 +622,10 @@ public final class CdiUtil {
             context.fail("Injection point type must not be a type variable", owningElement);
             return true;
         }
+        if (EventMetadata.class.getName().equals(classElement.getName()) && !isObserverMethodParameter(owningElement)) {
+            context.fail("EventMetadata may only be injected into observer method parameters", owningElement);
+            return true;
+        }
         if (classElement.getName().equals(Instance.class.getName()) && isNoGenericType(classElement)) {
             context.fail("jakarta.enterprise.inject.Instance must have a required type parameter specified", owningElement);
             return true;
@@ -628,6 +633,22 @@ public final class CdiUtil {
         if (classElement.getName().equals(Event.class.getName()) && isNoGenericType(classElement)) {
             context.fail("jakarta.enterprise.event.Event must have a required type parameter specified", owningElement);
             return true;
+        }
+        return false;
+    }
+
+    private static boolean isObserverMethodParameter(Element element) {
+        if (!(element instanceof ParameterElement)) {
+            return false;
+        }
+        try {
+            for (ParameterElement parameter : ((ParameterElement) element).getMethodElement().getParameters()) {
+                if (parameter.hasDeclaredAnnotation(Observes.class) || parameter.hasDeclaredAnnotation(ObservesAsync.class)) {
+                    return true;
+                }
+            }
+        } catch (IllegalStateException e) {
+            return false;
         }
         return false;
     }

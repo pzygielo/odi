@@ -47,4 +47,43 @@ class Test {
         where:
         annotation << [Disposes, Observes, ObservesAsync]
     }
+
+    void "test that initializer methods cannot inject event metadata"() {
+        when:
+        buildBeanDefinition('ctortest.Test', '''
+package ctortest;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.inject.spi.EventMetadata;
+import jakarta.inject.Inject;
+
+@Dependent
+class Test {
+    @Inject
+    void init(EventMetadata metadata) {
+    }
+}
+''')
+
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains("EventMetadata may only be injected into observer method parameters")
+    }
+
+    void "test that observer methods can inject event metadata"() {
+        expect:
+        buildBeanDefinition('ctortest.Test', '''
+package ctortest;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.event.Observes;
+import jakarta.enterprise.inject.spi.EventMetadata;
+
+@Dependent
+class Test {
+    void observe(@Observes String event, EventMetadata metadata) {
+    }
+}
+''')
+    }
 }

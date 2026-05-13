@@ -797,6 +797,19 @@ public final class CdiUtil {
         return false;
     }
 
+    public static boolean validateNormalScopePublicFields(VisitorContext context, ClassElement classElement) {
+        if (!classElement.hasStereotype(jakarta.enterprise.context.NormalScope.class.getName())) {
+            return false;
+        }
+        for (FieldElement field : classElement.getEnclosedElements(ElementQuery.ALL_FIELDS)) {
+            if (field.isPublic() && !field.isStatic()) {
+                context.fail("Managed bean classes with non-static public fields must have @Dependent scope", field);
+                return true;
+            }
+        }
+        return false;
+    }
+
     public static boolean validateProducerType(VisitorContext context, ClassElement producerType, Element producerElement) {
         if (containsWildcard(producerType)) {
             context.fail("Producer type must not contain wildcard type parameters", producerElement);

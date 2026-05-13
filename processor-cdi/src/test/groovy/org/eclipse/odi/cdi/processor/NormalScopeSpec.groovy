@@ -140,4 +140,46 @@ class Test<T> {
 
 ''')
     }
+
+    void 'test fail compilation with normal scoped public field'() {
+        when:
+        buildBeanDefinition('appscope.Test', '''
+package appscope;
+
+@jakarta.enterprise.context.RequestScoped
+class Test {
+    public String name;
+}
+
+''')
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains('Managed bean classes with non-static public fields must have @Dependent scope')
+    }
+
+    void 'test dependent bean with public field compiles'() {
+        expect:
+        buildBeanDefinition('appscope.Test', '''
+package appscope;
+
+@jakarta.enterprise.context.Dependent
+class Test {
+    public String name;
+}
+
+''')
+    }
+
+    void 'test normal scoped static public field compiles'() {
+        expect:
+        buildBeanDefinition('appscope.Test', '''
+package appscope;
+
+@jakarta.enterprise.context.RequestScoped
+class Test {
+    public static String name;
+}
+
+''')
+    }
 }

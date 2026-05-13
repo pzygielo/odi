@@ -41,6 +41,9 @@ public class ScopeVisitor implements TypeElementVisitor<Object, Object> {
             if (CdiUtil.validateGenericBeanScope(context, element)) {
                 return;
             }
+            if (CdiUtil.validateNormalScopePublicFields(context, element)) {
+                return;
+            }
             CdiUtil.visitBeanDefinition(context, element);
             CdiUtil.visitPriority(context, element);
         }

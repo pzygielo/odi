@@ -26,6 +26,7 @@ import io.micronaut.inject.ast.MethodElement;
 import io.micronaut.inject.ast.ParameterElement;
 import io.micronaut.inject.visitor.TypeElementVisitor;
 import io.micronaut.inject.visitor.VisitorContext;
+import jakarta.enterprise.context.Dependent;
 import jakarta.enterprise.inject.Produces;
 import org.eclipse.odi.cdi.processor.CdiUtil;
 
@@ -113,6 +114,9 @@ public class ProducesVisitor implements TypeElementVisitor<Object, Produces> {
         }
         if (!this.currentClass.hasAnnotation(Factory.class)) {
             this.currentClass.annotate(Factory.class);
+        }
+        if (CdiUtil.hasDependentScope(element, context) && !element.hasDeclaredAnnotation(Dependent.class)) {
+            element.annotate(Dependent.class);
         }
         CdiUtil.visitBeanDefinition(context, element);
         if (CdiUtil.hasDependentScope(element, context)) {

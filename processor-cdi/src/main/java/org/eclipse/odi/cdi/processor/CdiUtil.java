@@ -812,7 +812,7 @@ public final class CdiUtil {
                 declaredScopes.add(annotationName);
             }
         }
-        if (element.hasDeclaredAnnotation(Factory.class)) {
+        if (element.hasAnnotation(Factory.class) || element.hasStereotype(Factory.class)) {
             declaredScopes.remove(Singleton.class.getName());
             declaredScopes.remove(jakarta.enterprise.context.Dependent.class.getName());
         }

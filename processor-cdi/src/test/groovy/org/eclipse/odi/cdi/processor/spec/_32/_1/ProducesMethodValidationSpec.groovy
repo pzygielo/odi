@@ -265,6 +265,33 @@ class Shop {
 """)
     }
 
+    void "test producer method without scope defaults to dependent"() {
+        given:
+        def context = buildContext("""
+package test;
+
+import jakarta.enterprise.context.RequestScoped;
+import jakarta.enterprise.inject.Produces;
+
+@RequestScoped
+class Shop {
+    @Produces
+    Product getBean() {
+        return new Product();
+    }
+}
+
+class Product {
+}
+""")
+
+        expect:
+        context.getBeanDefinition(context.classLoader.loadClass('test.Product')).getScope().get() == jakarta.enterprise.context.Dependent
+
+        cleanup:
+        context.close()
+    }
+
     void "test fail compilation for producer method with multiple declared scopes"() {
         when:
         buildBeanDefinition('test.Shop', """

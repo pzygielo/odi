@@ -53,16 +53,6 @@
                     <exclude name="testInterceptorInstanceCreatedWhenTargetInstanceCreated"/>
                 </methods>
             </class>
-            <class name="org.jboss.cdi.tck.tests.event.resolve.typeWithParameters.CheckTypeParametersWhenResolvingObserversTest">
-                <methods>
-                    <exclude name="testEventTypeResolution"/>
-                    <exclude name="testObservedEventTypeParameterIsActualType"/>
-                    <exclude name="testObservedEventTypeParameterIsActualTypeNested"/>
-                    <exclude name="testObservedEventTypeParameterIsTypeVariable"/>
-                    <exclude name="testObservedEventTypeParameterIsWildcard"/>
-                    <exclude name="testResolvingChecksTypeParameters"/>
-                </methods>
-            </class>
             <!--            Cannot apply AOP advice to final class-->
             <class name="org.jboss.cdi.tck.tests.implementation.simple.lifecycle.unproxyable.UnproxyableManagedBeanTest">
                 <methods>

@@ -17,11 +17,13 @@ package org.eclipse.odi.cdi;
 
 import io.micronaut.core.annotation.AnnotationMetadata;
 import io.micronaut.core.annotation.AnnotationValue;
+import io.micronaut.core.annotation.Internal;
 import io.micronaut.core.reflect.ReflectionUtils;
 import io.micronaut.core.type.Argument;
 import org.eclipse.odi.cdi.annotation.OdiBeanType;
 
 import java.lang.annotation.Annotation;
+import java.lang.reflect.Array;
 import java.lang.reflect.GenericArrayType;
 import java.lang.reflect.GenericDeclaration;
 import java.lang.reflect.ParameterizedType;
@@ -30,13 +32,16 @@ import java.lang.reflect.TypeVariable;
 import java.lang.reflect.WildcardType;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-final class OdiTypeUtils {
+@Internal
+public final class OdiTypeUtils {
 
     private OdiTypeUtils() {
     }
@@ -56,6 +61,36 @@ final class OdiTypeUtils {
         return selectRequiredType(toType(metadataTypes.get(0)), resolvedArgumentType);
     }
 
+    public static Type getArgumentType(Argument<?> argument) {
+        Type requiredType = getRequiredType(argument);
+        return requiredType == null ? toType(argument) : requiredType;
+    }
+
+    public static Type getEventType(Argument<?> argument) {
+        Type metadataType = getMetadataType(argument);
+        if (metadataType != null) {
+            return metadataType;
+        }
+        if (hasOnlyRawTypeVariables(argument)) {
+            return argument.getType();
+        }
+        return toType(argument);
+    }
+
+    private static Type getMetadataType(Argument<?> argument) {
+        List<AnnotationValue<OdiBeanType>> metadataTypes = argument.getAnnotationMetadata().getAnnotationValuesByType(OdiBeanType.class);
+        if (metadataTypes.isEmpty()) {
+            return null;
+        }
+        for (AnnotationValue<OdiBeanType> metadataType : metadataTypes) {
+            Class<?> rawType = metadataType.classValue().orElse(null);
+            if (rawType == argument.getType()) {
+                return toType(metadataType);
+            }
+        }
+        return toType(metadataTypes.get(0));
+    }
+
     private static Type selectRequiredType(Type metadataType, Type resolvedArgumentType) {
         if (containsTypeVariable(metadataType)
                 && resolvedArgumentType != null
@@ -69,15 +104,16 @@ final class OdiTypeUtils {
 
     private static Type toType(Argument<?> argument) {
         Argument<?>[] typeParameters = argument.getTypeParameters();
-        if (typeParameters.length == 0) {
-            return argument.getType();
-        }
         Type[] arguments = new Type[typeParameters.length];
         for (int i = 0; i < typeParameters.length; i++) {
             arguments[i] = toType(typeParameters[i]);
         }
         if (argument.isTypeVariable()) {
-            return new OdiTypeVariable(argument.getName(), new Type[]{argument.getType()});
+            Type bound = arguments.length == 0 ? argument.getType() : new OdiParameterizedType(argument.getType(), arguments);
+            return new OdiTypeVariable(argument.getName(), new Type[]{bound});
+        }
+        if (typeParameters.length == 0) {
+            return argument.getType();
         }
         return new OdiParameterizedType(argument.getType(), arguments);
     }
@@ -218,6 +254,94 @@ final class OdiTypeUtils {
         return false;
     }
 
+    public static boolean isEventAssignable(Argument<?> observedArgument, Argument<?> eventArgument) {
+        return isEventAssignable(getEventType(observedArgument), getArgumentType(eventArgument));
+    }
+
+    public static Type resolveSuperType(Argument<?> argument, Class<?> superType) {
+        Type eventType = getArgumentType(argument);
+        Class<?> rawType = rawType(eventType);
+        if (rawType == null || rawType.isArray() || !superType.isAssignableFrom(rawType)) {
+            return null;
+        }
+        Map<TypeVariable<?>, Type> substitutions = new HashMap<>();
+        collectTypeSubstitutions(rawType, eventType, substitutions);
+        return resolveSuperType(rawType, superType, eventType, substitutions);
+    }
+
+    public static boolean isEventAssignable(Type observedType, Type eventType) {
+        if (isSameType(observedType, eventType)) {
+            return true;
+        }
+        if (isTypeVariable(observedType)) {
+            return satisfiesBounds(eventType, typeVariableBounds(observedType));
+        }
+        if (observedType instanceof Class<?>) {
+            Class<?> eventClass = rawType(eventType);
+            return eventClass != null && ((Class<?>) observedType).isAssignableFrom(eventClass);
+        }
+        if (observedType instanceof ParameterizedType) {
+            ParameterizedType observedParameterized = (ParameterizedType) observedType;
+            Class<?> observedRaw = rawType(observedParameterized);
+            Class<?> eventRaw = rawType(eventType);
+            if (observedRaw == null || eventRaw == null || !observedRaw.isAssignableFrom(eventRaw)) {
+                return false;
+            }
+            if (!(eventType instanceof ParameterizedType)) {
+                return false;
+            }
+            ParameterizedType eventParameterized = (ParameterizedType) eventType;
+            if (!observedRaw.equals(rawType(eventParameterized))) {
+                return false;
+            }
+            Type[] observedArguments = observedParameterized.getActualTypeArguments();
+            Type[] eventArguments = eventParameterized.getActualTypeArguments();
+            if (observedArguments.length != eventArguments.length) {
+                return false;
+            }
+            for (int i = 0; i < observedArguments.length; i++) {
+                if (!isEventArgumentAssignable(observedArguments[i], eventArguments[i])) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private static boolean isEventArgumentAssignable(Type observedArgument, Type eventArgument) {
+        if (isSameType(observedArgument, eventArgument)) {
+            return true;
+        }
+        if (observedArgument instanceof WildcardType) {
+            return isEventArgumentAssignableToWildcard((WildcardType) observedArgument, eventArgument);
+        }
+        if (isTypeVariable(observedArgument)) {
+            return satisfiesBounds(eventArgument, typeVariableBounds(observedArgument));
+        }
+        if (observedArgument instanceof ParameterizedType && eventArgument instanceof ParameterizedType) {
+            return isEventAssignable(observedArgument, eventArgument);
+        }
+        return false;
+    }
+
+    private static boolean isEventArgumentAssignableToWildcard(WildcardType wildcard, Type eventArgument) {
+        for (Type upperBound : wildcard.getUpperBounds()) {
+            if (upperBound == Object.class) {
+                continue;
+            }
+            if (!isTypeAssignable(eventArgument, upperBound)) {
+                return false;
+            }
+        }
+        for (Type lowerBound : wildcard.getLowerBounds()) {
+            if (!isTypeAssignable(lowerBound, eventArgument)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private static boolean isParameterizedBeanTypeAssignableToRaw(Type beanArgument) {
         if (beanArgument == Object.class) {
             return true;
@@ -348,6 +472,120 @@ final class OdiTypeUtils {
         return new Type[0];
     }
 
+    private static Type resolveSuperType(Class<?> rawType,
+                                         Class<?> superType,
+                                         Type currentType,
+                                         Map<TypeVariable<?>, Type> substitutions) {
+        if (rawType == superType) {
+            return currentType;
+        }
+        for (Type candidate : getGenericSupertypes(rawType)) {
+            Type substitutedCandidate = substituteTypeVariables(candidate, substitutions);
+            Class<?> candidateRawType = rawType(substitutedCandidate);
+            if (candidateRawType == null || !superType.isAssignableFrom(candidateRawType)) {
+                continue;
+            }
+            if (candidateRawType == superType) {
+                return substitutedCandidate;
+            }
+            Map<TypeVariable<?>, Type> nestedSubstitutions = new HashMap<>(substitutions);
+            collectTypeSubstitutions(candidateRawType, substitutedCandidate, nestedSubstitutions);
+            Type resolved = resolveSuperType(candidateRawType, superType, substitutedCandidate, nestedSubstitutions);
+            if (resolved != null) {
+                return resolved;
+            }
+        }
+        return null;
+    }
+
+    private static List<Type> getGenericSupertypes(Class<?> rawType) {
+        List<Type> supertypes = new ArrayList<>();
+        supertypes.addAll(Arrays.asList(rawType.getGenericInterfaces()));
+        Type genericSuperclass = rawType.getGenericSuperclass();
+        if (genericSuperclass != null && genericSuperclass != Object.class) {
+            supertypes.add(genericSuperclass);
+        }
+        return supertypes;
+    }
+
+    private static void collectTypeSubstitutions(Class<?> rawType,
+                                                 Type type,
+                                                 Map<TypeVariable<?>, Type> substitutions) {
+        if (!(type instanceof ParameterizedType)) {
+            return;
+        }
+        ParameterizedType parameterizedType = (ParameterizedType) type;
+        if (!rawType.equals(rawType(parameterizedType))) {
+            return;
+        }
+        TypeVariable<? extends Class<?>>[] variables = rawType.getTypeParameters();
+        Type[] arguments = parameterizedType.getActualTypeArguments();
+        if (variables.length != arguments.length) {
+            return;
+        }
+        for (int i = 0; i < variables.length; i++) {
+            substitutions.put(variables[i], substituteTypeVariables(arguments[i], substitutions));
+        }
+    }
+
+    private static Type substituteTypeVariables(Type type, Map<TypeVariable<?>, Type> substitutions) {
+        if (type instanceof TypeVariable<?>) {
+            Type replacement = substitutions.get(type);
+            return replacement == null || replacement == type ? type : substituteTypeVariables(replacement, substitutions);
+        }
+        if (type instanceof ParameterizedType) {
+            ParameterizedType parameterizedType = (ParameterizedType) type;
+            Class<?> rawType = rawType(parameterizedType);
+            if (rawType == null) {
+                return type;
+            }
+            Type[] arguments = parameterizedType.getActualTypeArguments();
+            Type[] substitutedArguments = new Type[arguments.length];
+            for (int i = 0; i < arguments.length; i++) {
+                substitutedArguments[i] = substituteTypeVariables(arguments[i], substitutions);
+            }
+            return new OdiParameterizedType(rawType, substitutedArguments);
+        }
+        if (type instanceof WildcardType) {
+            WildcardType wildcardType = (WildcardType) type;
+            Type[] upperBounds = wildcardType.getUpperBounds();
+            Type[] lowerBounds = wildcardType.getLowerBounds();
+            for (int i = 0; i < upperBounds.length; i++) {
+                upperBounds[i] = substituteTypeVariables(upperBounds[i], substitutions);
+            }
+            for (int i = 0; i < lowerBounds.length; i++) {
+                lowerBounds[i] = substituteTypeVariables(lowerBounds[i], substitutions);
+            }
+            return new OdiWildcardType(upperBounds, lowerBounds);
+        }
+        if (type instanceof GenericArrayType) {
+            Type componentType = substituteTypeVariables(((GenericArrayType) type).getGenericComponentType(), substitutions);
+            if (componentType instanceof Class<?>) {
+                return Array.newInstance((Class<?>) componentType, 0).getClass();
+            }
+            return new OdiGenericArrayType(componentType);
+        }
+        return type;
+    }
+
+    private static boolean hasOnlyRawTypeVariables(Argument<?> argument) {
+        Argument<?>[] typeParameters = argument.getTypeParameters();
+        TypeVariable<? extends Class<?>>[] declaredTypeParameters = argument.getType().getTypeParameters();
+        if (typeParameters.length == 0 || typeParameters.length != declaredTypeParameters.length) {
+            return false;
+        }
+        for (int i = 0; i < typeParameters.length; i++) {
+            Argument<?> typeParameter = typeParameters[i];
+            if (!typeParameter.isTypeVariable()
+                    || typeParameter.getType() != Object.class
+                    || !typeParameter.getName().equals(declaredTypeParameters[i].getName())
+                    || typeParameter.getTypeParameters().length != 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private static boolean isSameType(Type left, Type right) {
         if (Objects.equals(left, right)) {
             return true;
@@ -379,7 +617,29 @@ final class OdiTypeUtils {
                     ((GenericArrayType) right).getGenericComponentType()
             );
         }
+        if (left instanceof WildcardType && right instanceof WildcardType) {
+            WildcardType leftWildcard = (WildcardType) left;
+            WildcardType rightWildcard = (WildcardType) right;
+            return areSameTypes(leftWildcard.getUpperBounds(), rightWildcard.getUpperBounds())
+                    && areSameTypes(leftWildcard.getLowerBounds(), rightWildcard.getLowerBounds());
+        }
+        if (isTypeVariable(left) && isTypeVariable(right)) {
+            return Objects.equals(typeVariableName(left), typeVariableName(right))
+                    && areSameTypes(typeVariableBounds(left), typeVariableBounds(right));
+        }
         return false;
+    }
+
+    private static boolean areSameTypes(Type[] left, Type[] right) {
+        if (left.length != right.length) {
+            return false;
+        }
+        for (int i = 0; i < left.length; i++) {
+            if (!isSameType(left[i], right[i])) {
+                return false;
+            }
+        }
+        return true;
     }
 
     static boolean isLegalBeanType(Type type) {
@@ -481,6 +741,22 @@ final class OdiTypeUtils {
         }
         if (type instanceof Argument<?>) {
             return ((Argument<?>) type).getType();
+        }
+        if (type instanceof GenericArrayType) {
+            Class<?> componentType = rawType(((GenericArrayType) type).getGenericComponentType());
+            if (componentType != null) {
+                return Array.newInstance(componentType, 0).getClass();
+            }
+        }
+        return null;
+    }
+
+    private static String typeVariableName(Type type) {
+        if (type instanceof TypeVariable<?>) {
+            return ((TypeVariable<?>) type).getName();
+        }
+        if (type instanceof Argument<?> && ((Argument<?>) type).isTypeVariable()) {
+            return ((Argument<?>) type).getName();
         }
         return null;
     }
@@ -660,6 +936,40 @@ final class OdiTypeUtils {
         @Override
         public int hashCode() {
             return Arrays.hashCode(upperBounds) ^ Arrays.hashCode(lowerBounds);
+        }
+
+        @Override
+        public String toString() {
+            return getTypeName();
+        }
+    }
+
+    private static final class OdiGenericArrayType implements GenericArrayType {
+        private final Type componentType;
+
+        private OdiGenericArrayType(Type componentType) {
+            this.componentType = componentType;
+        }
+
+        @Override
+        public Type getGenericComponentType() {
+            return componentType;
+        }
+
+        @Override
+        public String getTypeName() {
+            return componentType.getTypeName() + "[]";
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            return other instanceof GenericArrayType
+                    && Objects.equals(componentType, ((GenericArrayType) other).getGenericComponentType());
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hashCode(componentType);
         }
 
         @Override

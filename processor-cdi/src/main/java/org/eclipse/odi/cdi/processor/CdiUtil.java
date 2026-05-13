@@ -537,6 +537,17 @@ public final class CdiUtil {
         return validateResolvableInjectionPoint(context, injectPointType, injectPoint, declaredAnyWithoutDefault);
     }
 
+    public static void visitEventType(TypedElement eventType) {
+        ClassElement requiredType = resolveInjectPointType(eventType);
+        if (requiredType == null
+                || requiredType.isArray()
+                || requiredType.isRawType()
+                || !containsWildcard(requiredType)) {
+            return;
+        }
+        visitRequiredType(eventType);
+    }
+
     private static void visitRequiredType(TypedElement injectPoint) {
         ClassElement requiredType = resolveInjectPointType(injectPoint);
         if (requiredType == null || !hasTypeArguments(requiredType, false)) {

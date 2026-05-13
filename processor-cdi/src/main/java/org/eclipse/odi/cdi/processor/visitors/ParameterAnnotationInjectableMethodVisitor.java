@@ -116,6 +116,7 @@ abstract class ParameterAnnotationInjectableMethodVisitor<T extends Annotation> 
             element.annotate(ReflectiveAccess.class);
         }
         CdiUtil.visitQualifierDefaults(context, parameter);
+        CdiUtil.visitEventType(parameter);
         handleMatch(element, parameter, context);
     }
 

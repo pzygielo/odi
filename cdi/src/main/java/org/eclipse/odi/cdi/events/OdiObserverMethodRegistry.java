@@ -15,7 +15,6 @@
  */
 package org.eclipse.odi.cdi.events;
 
-import org.eclipse.odi.cdi.DefaultQualifier;
 import io.micronaut.context.Qualifier;
 import io.micronaut.core.annotation.AnnotationMetadata;
 import io.micronaut.core.annotation.Internal;
@@ -26,9 +25,11 @@ import io.micronaut.inject.qualifiers.Qualifiers;
 import jakarta.enterprise.inject.Default;
 import jakarta.enterprise.inject.spi.ObserverMethod;
 import jakarta.inject.Singleton;
+import org.eclipse.odi.cdi.DefaultQualifier;
+import org.eclipse.odi.cdi.OdiTypeUtils;
 
+import java.lang.reflect.Type;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
@@ -116,16 +117,19 @@ public final class OdiObserverMethodRegistry {
     }
 
     private boolean matchesObservedType(Argument<?> observedArgument, Argument<?> eventArgument) {
-        if (observedArgument.isAssignableFrom(eventArgument)) {
+        if (OdiTypeUtils.isEventAssignable(observedArgument, eventArgument)) {
             return true;
         }
-        if (!observedArgument.getType().equals(eventArgument.getType())) {
-            return false;
+        Class<?> observedType = observedArgument.getType();
+        Class<?> eventType = eventArgument.getType();
+        if (observedType.isAssignableFrom(eventType)) {
+            if (observedType.isArray() || eventType.isArray()) {
+                return true;
+            }
+            Type resolvedEventType = OdiTypeUtils.resolveSuperType(eventArgument, observedType);
+            return resolvedEventType != null
+                    && OdiTypeUtils.isEventAssignable(OdiTypeUtils.getEventType(observedArgument), resolvedEventType);
         }
-        Argument<?>[] observedTypeParameters = observedArgument.getTypeParameters();
-        Argument<?>[] eventTypeParameters = eventArgument.getTypeParameters();
-        return observedTypeParameters.length == 0
-                || eventTypeParameters.length == 0
-                || Arrays.equals(observedTypeParameters, eventTypeParameters);
+        return false;
     }
 }

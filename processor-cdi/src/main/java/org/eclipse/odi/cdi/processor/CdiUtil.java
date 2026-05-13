@@ -613,6 +613,10 @@ public final class CdiUtil {
     }
 
     public static boolean validateInjectedType(VisitorContext context, ClassElement classElement, Element owningElement) {
+        if (isTypeVariable(classElement) && !isDeclaredByVetoedType(owningElement)) {
+            context.fail("Injection point type must not be a type variable", owningElement);
+            return true;
+        }
         if (classElement.getName().equals(Instance.class.getName()) && isNoGenericType(classElement)) {
             context.fail("jakarta.enterprise.inject.Instance must have a required type parameter specified", owningElement);
             return true;
@@ -811,6 +815,26 @@ public final class CdiUtil {
         return classElement instanceof GenericPlaceholderElement
                 || classElement.isGenericPlaceholder()
                 || classElement.isTypeVariable();
+    }
+
+    private static boolean isDeclaredByVetoedType(Element element) {
+        if (element instanceof ParameterElement) {
+            try {
+                return isDeclaredByVetoedType(((ParameterElement) element).getMethodElement());
+            } catch (IllegalStateException e) {
+                return false;
+            }
+        }
+        if (element instanceof MemberElement) {
+            MemberElement memberElement = (MemberElement) element;
+            return isVetoed(memberElement.getDeclaringType()) || isVetoed(memberElement.getOwningType());
+        }
+        return false;
+    }
+
+    private static boolean isVetoed(ClassElement classElement) {
+        return classElement.hasAnnotation(io.micronaut.core.annotation.Vetoed.class)
+                || classElement.hasAnnotation(jakarta.enterprise.inject.Vetoed.class);
     }
 
     private static List<ClassElement> resolvedTypeArguments(ClassElement classElement) {

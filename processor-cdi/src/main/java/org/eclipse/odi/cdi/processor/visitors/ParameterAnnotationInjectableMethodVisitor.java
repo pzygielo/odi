@@ -81,7 +81,8 @@ abstract class ParameterAnnotationInjectableMethodVisitor<T extends Annotation> 
             if (CdiUtil.validateParameterExtraAnnotations(context, getParameterAnnotation(), element, parameter)) {
                 return;
             }
-            if (CdiUtil.validateInjectedType(context, parameter.getGenericType(), parameter)) {
+            if (!parameter.hasDeclaredAnnotation(getParameterAnnotation())
+                    && CdiUtil.validateInjectedType(context, parameter.getGenericType(), parameter)) {
                 return;
             }
         }

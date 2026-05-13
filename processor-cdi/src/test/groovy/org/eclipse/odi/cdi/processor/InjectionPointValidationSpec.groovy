@@ -139,4 +139,94 @@ class Foo {
 }
 ''')
     }
+
+    void "test type variable injection point fails"() {
+        when:
+        buildBeanDefinition('typevariable.Consumer', '''
+package typevariable;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.inject.Inject;
+
+@Dependent
+class Consumer {
+    @Inject
+    <T extends Animal> void setAnimal(T animal) {
+    }
+}
+
+interface Animal {
+}
+''')
+
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains("Injection point type must not be a type variable")
+    }
+
+    void "test parameterized type variable injection point compiles"() {
+        expect:
+        buildBeanDefinition('typevariableparam.Consumer', '''
+package typevariableparam;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.inject.Inject;
+
+@Dependent
+class Consumer<T extends Animal> {
+    @Inject
+    Box<T> animal;
+}
+
+@Dependent
+class Box<T extends Animal> {
+}
+
+interface Animal {
+}
+''')
+    }
+
+    void "test type variable observer event parameter compiles"() {
+        expect:
+        buildBeanDefinition('typevariableobserver.Consumer', '''
+package typevariableobserver;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.event.Observes;
+
+@Dependent
+class Consumer {
+    <T extends Animal> void observe(@Observes T animal) {
+    }
+}
+
+interface Animal {
+}
+''')
+    }
+
+    void "test type variable injection point on vetoed superclass compiles"() {
+        expect:
+        buildBeanDefinition('typevariablevetoed.Consumer', '''
+package typevariablevetoed;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.inject.Vetoed;
+import jakarta.inject.Inject;
+
+@Dependent
+class Consumer extends Base<Animal> {
+}
+
+@Vetoed
+class Base<T extends Animal> {
+    @Inject
+    T animal;
+}
+
+interface Animal {
+}
+''')
+    }
 }

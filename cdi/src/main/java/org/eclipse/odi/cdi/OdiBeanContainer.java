@@ -16,6 +16,8 @@
 package org.eclipse.odi.cdi;
 
 import io.micronaut.context.BeanContext;
+import io.micronaut.context.Qualifier;
+import io.micronaut.core.annotation.AnnotationMetadata;
 import io.micronaut.core.annotation.Internal;
 import io.micronaut.core.annotation.NonNull;
 import io.micronaut.core.annotation.Nullable;
@@ -23,6 +25,7 @@ import io.micronaut.core.type.Argument;
 import io.micronaut.inject.BeanDefinition;
 import io.micronaut.inject.ExecutableMethod;
 import jakarta.enterprise.context.spi.Context;
+import jakarta.enterprise.event.Event;
 import jakarta.enterprise.inject.spi.BeanContainer;
 
 import java.util.Collection;
@@ -102,6 +105,20 @@ public interface OdiBeanContainer extends BeanContainer {
      */
     @NonNull
     BeanContext getBeanContext();
+
+    /**
+     * Creates an event preserving Micronaut's generic argument metadata.
+     *
+     * @param eventType The event type
+     * @param annotationMetadata The annotation metadata
+     * @param qualifier The qualifier
+     * @param <T> The event type
+     * @return The event
+     */
+    @NonNull
+    <T> Event<T> getEvent(@NonNull Argument<T> eventType,
+                          @NonNull AnnotationMetadata annotationMetadata,
+                          @Nullable Qualifier<T> qualifier);
 
     /**
      * Utility class for ODI annotations.

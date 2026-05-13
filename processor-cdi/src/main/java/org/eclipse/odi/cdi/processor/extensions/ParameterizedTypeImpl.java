@@ -75,7 +75,7 @@ class ParameterizedTypeImpl extends AnnotationTargetImpl implements Parameterize
         for (ClassElement ce : boundGenericTypes) {
             Type type;
             if (ce.isWildcard()) {
-                type = TypeFactory.createWildType((WildcardElement) ce, getTypes(), visitorContext, classElement, boundGenericTypes.indexOf(ce));
+                type = TypeFactory.createWildType((WildcardElement) ce, getTypes(), visitorContext);
             } else {
                 type = TypeFactory.createType(ce, getTypes(), visitorContext);
             }

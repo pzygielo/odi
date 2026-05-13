@@ -20,6 +20,8 @@ import io.micronaut.context.BeanContext;
 import io.micronaut.context.BeanRegistration;
 import io.micronaut.context.BeanResolutionContext;
 import io.micronaut.context.DefaultBeanResolutionContext;
+import io.micronaut.context.Qualifier;
+import io.micronaut.core.annotation.AnnotationMetadata;
 import io.micronaut.core.annotation.AnnotationUtil;
 import io.micronaut.core.annotation.AnnotationValue;
 import io.micronaut.core.annotation.Order;
@@ -50,6 +52,7 @@ import jakarta.inject.Singleton;
 import org.eclipse.odi.cdi.annotation.reflect.AnnotationReflection;
 import org.eclipse.odi.cdi.context.DependentContext;
 import org.eclipse.odi.cdi.context.SingletonContext;
+import org.eclipse.odi.cdi.events.OdiEventFactory;
 import org.eclipse.odi.cdi.events.OdiObserverMethodRegistry;
 
 import java.lang.annotation.Annotation;
@@ -489,6 +492,14 @@ final class OdiBeanContainerImpl implements OdiBeanContainer {
             objectEvent = applicationContext.getBean(Event.class);
         }
         return objectEvent;
+    }
+
+    @Override
+    public <T> Event<T> getEvent(Argument<T> eventType,
+                                 AnnotationMetadata annotationMetadata,
+                                 Qualifier<T> qualifier) {
+        return applicationContext.getBean(OdiEventFactory.class)
+                .buildEvent(annotationMetadata, eventType, qualifier, null);
     }
 
     @Override

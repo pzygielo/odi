@@ -53,6 +53,7 @@ public class OdiInjectionEnricher implements TestEnricher {
         Optional<? extends BeanDefinition<?>> beanDefinition = applicationContext.findBeanDefinition(testCase.getClass());
         if (beanDefinition.isPresent()) {
             applicationContext.inject(testCase);
+            return;
         }
         enrichUsingReflection(testCase, applicationContext);
     }

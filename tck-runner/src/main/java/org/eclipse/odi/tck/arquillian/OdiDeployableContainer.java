@@ -113,6 +113,7 @@ public class OdiDeployableContainer implements DeployableContainer<OdiContainerC
                     .classLoader(classLoader)
                     .build()
                     .start();
+            applicationContext.getBean(jakarta.enterprise.inject.se.SeContainer.class);
 
             runningApplicationContext.set(applicationContext);
             Thread.currentThread().setContextClassLoader(classLoader);

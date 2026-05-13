@@ -19,7 +19,7 @@ import io.micronaut.core.annotation.Internal;
 import io.micronaut.core.type.Argument;
 import io.micronaut.inject.BeanDefinition;
 import io.micronaut.inject.ExecutableMethod;
-import io.micronaut.inject.qualifiers.Qualifiers;
+import org.eclipse.odi.cdi.AnnotationUtils;
 import jakarta.enterprise.event.ObserverException;
 import jakarta.enterprise.event.Reception;
 import jakarta.enterprise.context.Dependent;
@@ -28,17 +28,14 @@ import jakarta.enterprise.inject.spi.Bean;
 import jakarta.enterprise.inject.spi.EventContext;
 import jakarta.enterprise.inject.spi.EventMetadata;
 import jakarta.enterprise.inject.spi.InjectionPoint;
-import jakarta.inject.Qualifier;
 import org.eclipse.odi.cdi.OdiBeanContainer;
 import org.eclipse.odi.cdi.annotation.ObservesMethod;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Type;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Objects;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * Implementation of {@link OdiObserverMethod} that is using {@link ExecutableMethod} to trigger the method.
@@ -69,7 +66,7 @@ final class ExecutableObserverMethod<B, E> extends AbstractOdiObserverMethod<E> 
         this.executableMethod = executableMethod;
         int eventArgumentsIndex = observesMethodAnnotationValue.intValue("eventArgumentIndex").getAsInt();
         this.eventArgument = Objects.requireNonNull((Argument<E>) executableMethod.getArguments()[eventArgumentsIndex]);
-        this.eventQualifier = Qualifiers.forArgument(eventArgument);
+        this.eventQualifier = AnnotationUtils.qualifierFromQualifierMetadata(eventArgument.getAnnotationMetadata());
         this.staticMethod = observesMethodAnnotationValue.booleanValue("staticMethod").orElse(false);
     }
 
@@ -86,8 +83,10 @@ final class ExecutableObserverMethod<B, E> extends AbstractOdiObserverMethod<E> 
     @Override
     public Set<Annotation> getObservedQualifiers() {
         if (observedQualifiers == null) {
-            observedQualifiers = Arrays.stream(eventArgument.getAnnotationMetadata().synthesizeAnnotationsByType(Qualifier.class))
-                    .collect(Collectors.toSet());
+            observedQualifiers = AnnotationUtils.synthesizeQualifierAnnotations(
+                    eventArgument.getAnnotationMetadata(),
+                    beanContainer.getBeanContext().getClassLoader()
+            );
         }
         return observedQualifiers;
     }

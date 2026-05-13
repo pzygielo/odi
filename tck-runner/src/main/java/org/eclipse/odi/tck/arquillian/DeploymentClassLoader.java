@@ -33,7 +33,7 @@ final class DeploymentClassLoader extends URLClassLoader {
     }
 
     DeploymentClassLoader(DeploymentDir deploymentDir) throws IOException {
-        super(findUrls(deploymentDir));
+        super(findUrls(deploymentDir), DeploymentClassLoader.class.getClassLoader());
     }
 
     private static URL[] findUrls(DeploymentDir deploymentDir) throws IOException {
@@ -69,6 +69,9 @@ final class DeploymentClassLoader extends URLClassLoader {
     @Override
     protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
         synchronized (getClassLoadingLock(name)) {
+            if (isParentFirst(name)) {
+                return super.loadClass(name, resolve);
+            }
             Class<?> clazz = findLoadedClass(name);
             if (clazz != null) {
                 return clazz;
@@ -84,5 +87,18 @@ final class DeploymentClassLoader extends URLClassLoader {
                 return super.loadClass(name, resolve);
             }
         }
+    }
+
+    private boolean isParentFirst(String name) {
+        return name.startsWith("jakarta.")
+                || name.startsWith("io.micronaut.")
+                || name.startsWith("org.eclipse.odi.")
+                || isTckInfrastructure(name);
+    }
+
+    private boolean isTckInfrastructure(String name) {
+        return name.startsWith("org.jboss.cdi.tck.")
+                && !name.startsWith("org.jboss.cdi.tck.tests.")
+                && !name.startsWith("org.jboss.cdi.tck.interceptors.tests.");
     }
 }

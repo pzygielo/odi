@@ -48,7 +48,7 @@ import java.util.function.Supplier;
 @SuppressWarnings("CdiManagedBeanInconsistencyInspection")
 @Internal
 @Factory
-final class OdiEventFactory {
+public final class OdiEventFactory {
 
     private final OdiBeanContainer beanContainer;
     private final OdiObserverMethodRegistry observerMethodRegistry;
@@ -178,6 +178,14 @@ final class OdiEventFactory {
                 observerMethodRegistry,
                 executorSupplier
         );
+    }
+
+    public <K> Event<K> buildEvent(
+            AnnotationMetadata annotationMetadata,
+            Argument<K> eventType,
+            @Nullable Qualifier<K> eventQualifier,
+            @Nullable InjectionPoint<?> injectionPoint) {
+        return getTypedEvent(annotationMetadata, eventType, eventType.asType(), eventQualifier, injectionPoint);
     }
 
     private <K> Event<K> getTypedEvent(Argument<K> eventType, Annotation[] qualifiers, InjectionPoint<?> injectionPoint) {

@@ -125,6 +125,7 @@ public final class AnnotationReflection {
     }
 
     private static void build(AnnotationValueBuilder<?> builder, String name, Object value, @Nullable Object defaultValue) {
+        addDefaultValue(builder, name, defaultValue);
         if (value.equals(defaultValue)) {
             return;
         }
@@ -184,6 +185,31 @@ public final class AnnotationReflection {
             builder.member(name, toAnnotationValue((Annotation) value));
         } else {
             throw new IllegalArgumentException("Unknown annotation attribute value: " + value);
+        }
+    }
+
+    private static void addDefaultValue(AnnotationValueBuilder<?> builder, String name, @Nullable Object defaultValue) {
+        if (defaultValue == null) {
+            return;
+        }
+        if (defaultValue instanceof Enum<?> enumValue) {
+            builder.defaultValues(Collections.singletonMap(name, enumValue.name()));
+        } else if (defaultValue instanceof Annotation annotation) {
+            builder.defaultValues(Collections.singletonMap(name, toAnnotationValue(annotation)));
+        } else if (defaultValue.getClass().isArray()) {
+            if (defaultValue instanceof Enum<?>[] enumValues) {
+                builder.defaultValues(Collections.singletonMap(name, Arrays.stream(enumValues)
+                        .map(Enum::name)
+                        .toArray(String[]::new)));
+            } else if (defaultValue instanceof Annotation[] annotations) {
+                builder.defaultValues(Collections.singletonMap(name, Arrays.stream(annotations)
+                        .map(AnnotationReflection::toAnnotationValue)
+                        .toArray(AnnotationValue[]::new)));
+            } else {
+                builder.defaultValues(Collections.singletonMap(name, defaultValue));
+            }
+        } else {
+            builder.defaultValues(Collections.singletonMap(name, defaultValue));
         }
     }
 }

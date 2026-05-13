@@ -15,7 +15,6 @@
  */
 package org.eclipse.odi.cdi.processor;
 
-import io.micronaut.annotation.processing.visitor.JavaClassElementHelper;
 import io.micronaut.core.annotation.AnnotationMetadata;
 import io.micronaut.core.annotation.AnnotationClassValue;
 import io.micronaut.core.annotation.AnnotationValue;
@@ -27,6 +26,7 @@ import io.micronaut.inject.annotation.AnnotationMetadataHierarchy;
 import io.micronaut.inject.ast.ClassElement;
 import io.micronaut.inject.ast.ConstructorElement;
 import io.micronaut.inject.ast.Element;
+import io.micronaut.inject.ast.ElementQuery;
 import io.micronaut.inject.ast.FieldElement;
 import io.micronaut.inject.ast.GenericPlaceholderElement;
 import io.micronaut.inject.ast.MethodElement;
@@ -37,6 +37,7 @@ import jakarta.annotation.Priority;
 import jakarta.enterprise.event.Event;
 import jakarta.enterprise.event.Observes;
 import jakarta.enterprise.event.ObservesAsync;
+import jakarta.enterprise.util.Nonbinding;
 import jakarta.enterprise.inject.Default;
 import jakarta.enterprise.inject.Disposes;
 import jakarta.enterprise.inject.Instance;
@@ -49,6 +50,7 @@ import java.lang.annotation.Annotation;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -292,6 +294,7 @@ public final class CdiUtil {
         if (needsDefaultQualifier(beanDefinition.getAnnotationMetadata(), declaringElementOnly)) {
             beanDefinition.annotate(Default.class);
         }
+        visitQualifierDefaults(context, beanDefinition);
         visitBeanTypes(beanDefinition);
     }
 
@@ -354,7 +357,7 @@ public final class CdiUtil {
     }
 
     private static boolean hasRawTypeArguments(ClassElement beanType) {
-        return JavaClassElementHelper.isRawClassElement(beanType) && !beanType.getTypeArguments().isEmpty();
+        return beanType.isRawType() && !beanType.getTypeArguments().isEmpty();
     }
 
     private static BeanTypeArguments toTypeArguments(ClassElement beanType, boolean collapseDeclaredTypeVariables) {
@@ -407,7 +410,7 @@ public final class CdiUtil {
         if (!typeArguments.isEmpty() && typeArguments.stream().allMatch(CdiUtil::isRawTypeVariable)) {
             return List.of();
         }
-        if (JavaClassElementHelper.isRawClassElement(beanType)
+        if (beanType.isRawType()
                 && (typeArguments.isEmpty() || typeArguments.stream().allMatch(typeArgument -> isDeclaredTypeVariable(beanType, typeArgument)))) {
             return List.of();
         }
@@ -479,7 +482,66 @@ public final class CdiUtil {
         if (needsDefaultInjectPointQualifier(injectPoint.getAnnotationMetadata())) {
             injectPoint.annotate(Default.class);
         }
+        visitQualifierDefaults(context, injectPoint);
         return CdiUtil.validateInjectedType(context, injectPoint.getGenericType(), injectPoint);
+    }
+
+    public static void visitQualifierDefaults(VisitorContext context, Element element) {
+        AnnotationMetadata annotationMetadata = element.getAnnotationMetadata();
+        Set<String> qualifierNames = new LinkedHashSet<>(annotationMetadata.getAnnotationNamesByStereotype(AnnotationUtil.QUALIFIER));
+        for (String annotationName : annotationMetadata.getAnnotationNames()) {
+            if (isQualifierAnnotation(context, annotationName)) {
+                qualifierNames.add(annotationName);
+            }
+        }
+        for (String annotationName : qualifierNames) {
+            if (AnnotationUtil.NAMED.equals(annotationName)) {
+                continue;
+            }
+            AnnotationValue<Annotation> annotationValue = annotationMetadata.getAnnotation(annotationName);
+            if (annotationValue == null) {
+                continue;
+            }
+            Map<CharSequence, Object> defaultValues = context.getAnnotationDefaultValues(annotationName);
+            if (defaultValues == null || defaultValues.isEmpty()) {
+                continue;
+            }
+            Set<String> nonBindingMembers = nonBindingMembers(context, annotationMetadata, annotationName);
+            Map<CharSequence, Object> mergedValues = new LinkedHashMap<>();
+            for (Map.Entry<CharSequence, Object> entry : defaultValues.entrySet()) {
+                if (!nonBindingMembers.contains(entry.getKey().toString())) {
+                    mergedValues.put(entry.getKey(), entry.getValue());
+                }
+            }
+            mergedValues.putAll(annotationValue.getValues());
+            if (mergedValues.equals(annotationValue.getValues())) {
+                continue;
+            }
+            element.annotate(AnnotationValue.builder(annotationValue, annotationValue.getRetentionPolicy())
+                    .members(mergedValues)
+                    .build());
+        }
+    }
+
+    private static Set<String> nonBindingMembers(VisitorContext context, AnnotationMetadata annotationMetadata, String annotationName) {
+        Set<String> nonBindingMembers = new LinkedHashSet<>(List.of(
+                annotationMetadata.stringValues(AnnotationUtil.QUALIFIER, AnnotationUtil.NON_BINDING_ATTRIBUTE)
+        ));
+        context.getClassElement(annotationName).ifPresent(annotation ->
+                annotation.getEnclosedElements(ElementQuery.ALL_METHODS.onlyDeclared())
+                        .stream()
+                        .filter(method -> method.hasAnnotation(Nonbinding.class))
+                        .map(MethodElement::getName)
+                        .forEach(nonBindingMembers::add)
+        );
+        return nonBindingMembers;
+    }
+
+    private static boolean isQualifierAnnotation(VisitorContext context, String annotationName) {
+        return context.getClassElement(annotationName)
+                .map(annotation -> annotation.hasAnnotation(AnnotationUtil.QUALIFIER)
+                        || annotation.hasStereotype(AnnotationUtil.QUALIFIER))
+                .orElse(false);
     }
 
     public static boolean validateInjectedType(VisitorContext context, ClassElement classElement, Element owningElement) {

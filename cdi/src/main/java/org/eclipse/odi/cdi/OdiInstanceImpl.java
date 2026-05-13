@@ -43,8 +43,10 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Spliterators;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 
 final class OdiInstanceImpl<T> implements OdiInstance<T> {
 
@@ -310,12 +312,12 @@ final class OdiInstanceImpl<T> implements OdiInstance<T> {
     @Override
     @NonNull
     public Iterator<T> iterator() {
-        return stream().iterator();
+        return handles().stream().map(Handle::get).iterator();
     }
 
     @Override
     public Stream<T> stream() {
-        return handles().stream().map(Handle::get);
+        return StreamSupport.stream(Spliterators.spliteratorUnknownSize(iterator(), 0), false);
     }
 
     private <K> Qualifier<K> withAnnotations(Annotation[] qualifiers) {

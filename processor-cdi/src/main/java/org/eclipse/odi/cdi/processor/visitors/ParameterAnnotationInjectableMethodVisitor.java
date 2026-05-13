@@ -96,6 +96,7 @@ abstract class ParameterAnnotationInjectableMethodVisitor<T extends Annotation> 
         if (element.isPrivate()) {
             element.annotate(ReflectiveAccess.class);
         }
+        CdiUtil.visitQualifierDefaults(context, parameter);
         handleMatch(element, parameter, context);
     }
 

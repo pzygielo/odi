@@ -34,12 +34,13 @@ import jakarta.interceptor.InterceptorBinding;
 import java.lang.annotation.Annotation;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Objects;
+import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * The internal annotation utils class.
@@ -58,33 +59,82 @@ public final class AnnotationUtils {
      */
     public static Set<Annotation> synthesizeQualifierAnnotations(AnnotationMetadata annotationMetadata, ClassLoader classLoader) {
         Set<String> stereotypes = new LinkedHashSet<>(annotationMetadata.getAnnotationNamesByStereotype(Stereotype.class.getName()));
-        return annotationMetadata
-                .getAnnotationNamesByStereotype(MetaAnnotationSupport.META_ANNOTATION_QUALIFIER)
-                .stream()
-                .filter(name -> !stereotypes.contains(name))
-                .map(name -> {
-                    if (name.equals(Any.NAME)) {
-                        return jakarta.enterprise.inject.Any.Literal.INSTANCE;
-                    }
-                    if (name.equals(Default.class.getName())) {
-                        return Default.Literal.INSTANCE;
-                    }
-                    if (name.equals(MetaAnnotationSupport.META_ANNOTATION_NAMED)) {
-                        if (!annotationMetadata.hasDeclaredAnnotation(AnnotationUtil.NAMED)) {
-                            return null;
+        Set<Annotation> resolved = new LinkedHashSet<>();
+        for (String name : annotationMetadata.getAnnotationNamesByStereotype(MetaAnnotationSupport.META_ANNOTATION_QUALIFIER)) {
+            if (stereotypes.contains(name)) {
+                continue;
+            }
+            Annotation annotation;
+            if (name.equals(Any.NAME)) {
+                annotation = jakarta.enterprise.inject.Any.Literal.INSTANCE;
+            } else if (name.equals(Default.class.getName())) {
+                annotation = Default.Literal.INSTANCE;
+            } else if (name.equals(MetaAnnotationSupport.META_ANNOTATION_NAMED)) {
+                if (!annotationMetadata.hasDeclaredAnnotation(AnnotationUtil.NAMED)) {
+                    annotation = null;
+                } else {
+                    annotation = NamedLiteral.of(annotationMetadata.stringValue(AnnotationUtil.NAMED).get());
+                }
+            } else {
+                final Class<? extends Annotation> annotationClass = annotationMetadata.getAnnotationType(name, classLoader)
+                        .orElse(null);
+                if (annotationClass != null) {
+                    if (annotationMetadata.findRepeatableAnnotation(name).isPresent()) {
+                        Annotation[] annotations = annotationMetadata.synthesizeAnnotationsByType(annotationClass);
+                        if (annotations.length > 0) {
+                            for (Annotation resolvedAnnotation : annotations) {
+                                if (resolvedAnnotation != null) {
+                                    resolved.add(resolvedAnnotation);
+                                }
+                            }
+                            annotation = null;
+                        } else {
+                            annotation = synthesizeQualifierAnnotation(annotationMetadata, annotationClass);
                         }
-                        return NamedLiteral.of(annotationMetadata.stringValue(AnnotationUtil.NAMED).get());
                     } else {
-                        final Class<? extends Annotation> annotationClass = annotationMetadata.getAnnotationType(name, classLoader)
-                                .orElse(null);
-                        if (annotationClass != null) {
-                            return annotationMetadata.synthesize(annotationClass);
-                        }
-                        return null;
+                        annotation = synthesizeQualifierAnnotation(annotationMetadata, annotationClass);
                     }
-                })
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
+                } else {
+                    annotation = null;
+                }
+            }
+            if (annotation != null) {
+                resolved.add(annotation);
+            }
+        }
+        return resolved;
+    }
+
+    @Nullable
+    private static <T extends Annotation> T synthesizeQualifierAnnotation(AnnotationMetadata annotationMetadata,
+                                                                         Class<T> annotationClass) {
+        AnnotationValue<T> annotationValue = annotationMetadata.findAnnotation(annotationClass).orElse(null);
+        if (annotationValue == null) {
+            return annotationMetadata.synthesize(annotationClass);
+        }
+        return synthesizeQualifierAnnotation(annotationClass, annotationValue);
+    }
+
+    private static <T extends Annotation> T synthesizeQualifierAnnotation(Class<T> annotationClass,
+                                                                         AnnotationValue<? extends Annotation> annotationValue) {
+        MutableAnnotationMetadata annotationMetadata = new MutableAnnotationMetadata();
+        annotationMetadata.addDeclaredAnnotation(
+                annotationValue.getAnnotationName(),
+                valuesIncludingDefaults(annotationValue),
+                annotationValue.getRetentionPolicy()
+        );
+        return annotationMetadata.synthesize(annotationClass);
+    }
+
+    private static Map<CharSequence, Object> valuesIncludingDefaults(AnnotationValue<? extends Annotation> annotationValue) {
+        Map<CharSequence, Object> values = annotationValue.getValues();
+        Map<CharSequence, Object> defaultValues = annotationValue.getDefaultValues();
+        if (defaultValues == null || defaultValues.isEmpty()) {
+            return values;
+        }
+        Map<CharSequence, Object> merged = new LinkedHashMap<>(defaultValues);
+        merged.putAll(values);
+        return merged;
     }
 
     /**
@@ -197,6 +247,44 @@ public final class AnnotationUtils {
     }
 
     /**
+     * Creates a qualifier from qualifier annotations stored in metadata.
+     * @param annotationMetadata The annotation metadata
+     * @param <U> The qualifier type
+     * @return The qualifier
+     */
+    @Nullable
+    @SuppressWarnings("unchecked")
+    public static <U> Qualifier<U> qualifierFromQualifierMetadata(AnnotationMetadata annotationMetadata) {
+        List<String> qualifierNames = annotationMetadata.getAnnotationNamesByStereotype(MetaAnnotationSupport.META_ANNOTATION_QUALIFIER);
+        if (qualifierNames.isEmpty()) {
+            return null;
+        }
+        Set<String> stereotypes = new LinkedHashSet<>(annotationMetadata.getAnnotationNamesByStereotype(Stereotype.class.getName()));
+        List<Qualifier<U>> qualifiers = new ArrayList<>(qualifierNames.size());
+        for (String qualifierName : qualifierNames) {
+            if (stereotypes.contains(qualifierName)) {
+                continue;
+            }
+            if (annotationMetadata.findRepeatableAnnotation(qualifierName).isPresent()) {
+                List<AnnotationValue<Annotation>> values = annotationMetadata.getAnnotationValuesByName(qualifierName);
+                if (!values.isEmpty()) {
+                    for (AnnotationValue<Annotation> value : values) {
+                        qualifiers.add((Qualifier<U>) Qualifiers.byAnnotation(annotationMetadata, value));
+                    }
+                    continue;
+                }
+            }
+            qualifiers.add((Qualifier<U>) byAnnotationName(annotationMetadata, qualifierName));
+        }
+        if (qualifiers.isEmpty()) {
+            return null;
+        }
+        return qualifiers.size() == 1
+                ? qualifiers.get(0)
+                : Qualifiers.byQualifiers(qualifiers.toArray(new Qualifier[0]));
+    }
+
+    /**
      * Convert the annotations array into {@link AnnotationMetadata} instance.
      * @param annotations The annotations
      * @return an instance of {@link AnnotationMetadata}
@@ -206,6 +294,7 @@ public final class AnnotationUtils {
             return AnnotationMetadata.EMPTY_METADATA;
         }
         MutableAnnotationMetadata annotationMetadata = new MutableAnnotationMetadata();
+        Map<String, Integer> qualifierCounts = qualifierCounts(annotations);
         for (Annotation annotation : annotations) {
             if (isQualifier(annotation)) {
                 if (isAny(annotation)) {
@@ -216,10 +305,21 @@ public final class AnnotationUtils {
                     );
                 } else {
                     AnnotationValue<Annotation> value = AnnotationReflection.toAnnotationValue(annotation);
-                    annotationMetadata.addDeclaredAnnotation(value.getAnnotationName(), value.getValues());
+                    AnnotationValue<Annotation> valueWithDefaults = annotationValueIncludingDefaults(value);
+                    String annotationName = value.getAnnotationName();
+                    if (qualifierCounts.getOrDefault(annotationName, 0) > 1) {
+                        String repeatableContainer = annotationMetadata.findRepeatableAnnotation(annotationName).orElse(null);
+                        if (repeatableContainer != null) {
+                            annotationMetadata.addDeclaredRepeatable(repeatableContainer, valueWithDefaults);
+                        } else {
+                            annotationMetadata.addDeclaredAnnotation(annotationName, valueWithDefaults.getValues());
+                        }
+                    } else {
+                        annotationMetadata.addDeclaredAnnotation(annotationName, valueWithDefaults.getValues());
+                    }
                     annotationMetadata.addDeclaredStereotype(
-                            List.of(value.getAnnotationName()),
-                            MetaAnnotationSupport.META_ANNOTATION_QUALIFIER, value.getValues()
+                            List.of(annotationName),
+                            MetaAnnotationSupport.META_ANNOTATION_QUALIFIER, valueWithDefaults.getValues()
                     );
                 }
             }
@@ -238,19 +338,26 @@ public final class AnnotationUtils {
             AnnotationMetadata annotationMetadata,
             Annotation... annotations) {
         if (annotations.length > 0) {
-            if (annotations.length == 1) {
-                Annotation annotation = annotations[0];
-                checkValidAnnotation(annotation, annotations);
-                return (Qualifier<U>) byAnnotation(annotationMetadata, annotation.annotationType());
-            } else {
-                Qualifier[] qualifiers = new Qualifier[annotations.length];
-                for (int i = 0; i < annotations.length; i++) {
-                    Annotation annotation = annotations[i];
-                    checkValidAnnotation(annotation, annotations);
-                    qualifiers[i] = byAnnotation(annotationMetadata, annotation.annotationType());
+            List<Qualifier<U>> qualifiers = new ArrayList<>(annotations.length);
+            Map<Class<? extends Annotation>, List<Annotation>> groupedAnnotations = groupQualifierAnnotations(annotations);
+            for (Map.Entry<Class<? extends Annotation>, List<Annotation>> entry : groupedAnnotations.entrySet()) {
+                Class<? extends Annotation> annotationClass = entry.getKey();
+                if (entry.getValue().size() == 1) {
+                    qualifiers.add((Qualifier<U>) byAnnotation(annotationMetadata, annotationClass));
+                } else {
+                    annotationMetadata.findRepeatableAnnotation(annotationClass.getName())
+                            .orElseThrow(() -> new IllegalArgumentException("Duplicate annotation detected: " + annotationClass));
+                    for (Annotation annotation : entry.getValue()) {
+                        qualifiers.add((Qualifier<U>) Qualifiers.byAnnotation(
+                                annotationMetadata,
+                                annotationValueIncludingDefaults(AnnotationReflection.toAnnotationValue(annotation))
+                        ));
+                    }
                 }
-                return Qualifiers.byQualifiers(qualifiers);
             }
+            return qualifiers.size() == 1
+                    ? qualifiers.get(0)
+                    : Qualifiers.byQualifiers(qualifiers.toArray(new Qualifier[0]));
         }
         return null;
     }
@@ -261,6 +368,20 @@ public final class AnnotationUtils {
             return AnyQualifier.INSTANCE;
         }
         return Qualifiers.byAnnotation(annotationMetadata, annotation);
+    }
+
+    static <T> Qualifier<T> byAnnotationName(AnnotationMetadata annotationMetadata, String annotation) {
+        if (annotation.equals(Any.NAME)) {
+            //noinspection unchecked
+            return AnyQualifier.INSTANCE;
+        }
+        return Qualifiers.byAnnotation(annotationMetadata, annotation);
+    }
+
+    private static AnnotationValue<Annotation> annotationValueIncludingDefaults(AnnotationValue<Annotation> annotationValue) {
+        return AnnotationValue.builder(annotationValue, annotationValue.getRetentionPolicy())
+                .members(valuesIncludingDefaults(annotationValue))
+                .build();
     }
 
     public static <T extends Annotation> boolean isAny(Class<T> annotation) {
@@ -275,17 +396,27 @@ public final class AnnotationUtils {
         return findAnnotationClass(annotation).isAnnotationPresent(jakarta.inject.Qualifier.class);
     }
 
-    private static void checkValidAnnotation(Annotation annotation, Annotation[] allAnnotations) {
-        Class<? extends Annotation> annotationClass = findAnnotationClass(annotation);
-        for (Annotation ann : allAnnotations) {
-            if (ann == annotation) {
-                continue;
-            }
-            Class<? extends Annotation> annAnnotationClass = findAnnotationClass(ann);
-            if (annAnnotationClass.equals(annotationClass)) {
-                throw new IllegalArgumentException("Duplicate annotation detected: " + annAnnotationClass);
+    private static Map<String, Integer> qualifierCounts(Annotation[] annotations) {
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (Annotation annotation : annotations) {
+            if (isQualifier(annotation)) {
+                counts.merge(findAnnotationClass(annotation).getName(), 1, Integer::sum);
             }
         }
+        return counts;
+    }
+
+    private static Map<Class<? extends Annotation>, List<Annotation>> groupQualifierAnnotations(Annotation[] annotations) {
+        Map<Class<? extends Annotation>, List<Annotation>> grouped = new LinkedHashMap<>();
+        for (Annotation annotation : annotations) {
+            Class<? extends Annotation> annotationClass = findAnnotationClass(annotation);
+            checkValidAnnotation(annotationClass, annotation);
+            grouped.computeIfAbsent(annotationClass, ignored -> new ArrayList<>()).add(annotation);
+        }
+        return grouped;
+    }
+
+    private static void checkValidAnnotation(Class<? extends Annotation> annotationClass, Annotation annotation) {
         if (!annotationClass.isAnnotationPresent(jakarta.inject.Qualifier.class)) {
             throw new IllegalArgumentException("Incorrect annotation: " + annotation.annotationType());
         }

@@ -152,6 +152,7 @@ final class OdiEvent<T> implements Event<T>, OdiEventMetadata {
     }
 
     private <U extends T> OdiEvent<U> select(Argument<U> argument, Type selectedEventType, Annotation[] annotations) {
+        validateNoTypeVariables(selectedEventType);
         AnnotationMetadata annotationMetadata = this.annotationMetadata;
         Qualifier<U> qualifier = (Qualifier<U>) this.qualifier;
         if (annotations != null && annotations.length > 0) {
@@ -218,9 +219,6 @@ final class OdiEvent<T> implements Event<T>, OdiEventMetadata {
         }
         Argument<?>[] selectedTypeParameters = eventType.getTypeParameters();
         if (runtimeTypeParameters.length != selectedTypeParameters.length) {
-            if (selectedTypeParameters.length == 0) {
-                return Argument.of(runtimeType);
-            }
             throw new IllegalArgumentException("Type variable in event type");
         }
         return Argument.of(runtimeType, selectedTypeParameters);

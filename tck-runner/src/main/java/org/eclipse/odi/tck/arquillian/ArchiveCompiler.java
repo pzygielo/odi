@@ -121,6 +121,7 @@ final class ArchiveCompiler {
         }
 
         doCompile(sourceFiles, deploymentDir.target.toFile());
+        setupCdiProviderService();
     }
 
     private void doCompile(Collection<File> testSources, File outputDir) throws ArchiveCompilationException, IOException {
@@ -207,6 +208,13 @@ final class ArchiveCompiler {
         Files.createDirectories(extensionServiceEntry.getParent());
         Files.write(extensionServiceEntry, extensionName.getBytes(StandardCharsets.UTF_8));
         return applicationSource;
+    }
+
+    private void setupCdiProviderService() throws IOException {
+        final Path providerServiceEntry = deploymentDir.target.resolve(
+                "META-INF/services/jakarta.enterprise.inject.spi.CDIProvider");
+        Files.createDirectories(providerServiceEntry.getParent());
+        Files.write(providerServiceEntry, "org.eclipse.odi.cdi.CDIProviderImpl".getBytes(StandardCharsets.UTF_8));
     }
 
     private void outputDiagnostics(DiagnosticCollector<JavaFileObject> diagnostics) throws ArchiveCompilationException {

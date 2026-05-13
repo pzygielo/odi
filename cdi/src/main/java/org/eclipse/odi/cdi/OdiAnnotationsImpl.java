@@ -29,12 +29,11 @@ import jakarta.inject.Singleton;
 import org.eclipse.odi.cdi.annotation.reflect.AnnotationReflection;
 
 import java.lang.annotation.Annotation;
+import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 @SuppressWarnings("CdiManagedBeanInconsistencyInspection")
 @Singleton
@@ -97,29 +96,26 @@ final class OdiAnnotationsImpl implements OdiAnnotations {
             AnnotationMetadata annotationMetadata,
             Annotation... annotations) {
         if (annotations.length > 0) {
-            if (annotations.length == 1) {
-                Annotation annotation = annotations[0];
-                Class<? extends Annotation> annotationClass = AnnotationUtils.findAnnotationClass(annotation);
-                if (isQualifier(annotationClass)) {
-                    return (Qualifier<U>) AnnotationUtils.byAnnotation(annotationMetadata, annotation.annotationType());
+            List<Qualifier<U>> qualifiers = new ArrayList<>(annotations.length);
+            Map<Class<? extends Annotation>, List<Annotation>> groupedAnnotations = groupQualifierAnnotations(annotations);
+            for (Map.Entry<Class<? extends Annotation>, List<Annotation>> entry : groupedAnnotations.entrySet()) {
+                Class<? extends Annotation> annotationClass = entry.getKey();
+                if (entry.getValue().size() == 1) {
+                    qualifiers.add((Qualifier<U>) AnnotationUtils.byAnnotation(annotationMetadata, annotationClass));
                 } else {
-                    throw new IllegalArgumentException("Not a valid qualifier annotation type: " + annotationClass.getName());
-                }
-            } else {
-                Qualifier[] qualifiers = new Qualifier[annotations.length];
-                Set<Class<? extends Annotation>> qualifierTypes = new HashSet<>(qualifiers.length);
-                for (int i = 0; i < annotations.length; i++) {
-                    Annotation annotation = annotations[i];
-                    Class<? extends Annotation> annotationClass = AnnotationUtils.findAnnotationClass(annotation);
-                    if (!qualifierTypes.add(annotationClass)) {
-                        throw new IllegalArgumentException("Qualifier cannot be duplicated for type: " + annotationClass.getName());
-                    }
-                    if (isQualifier(annotationClass)) {
-                        qualifiers[i] = AnnotationUtils.byAnnotation(annotationMetadata, annotation.annotationType());
+                    annotationMetadata.findRepeatableAnnotation(annotationClass.getName())
+                            .orElseThrow(() -> new IllegalArgumentException("Qualifier cannot be duplicated for type: " + annotationClass.getName()));
+                    for (Annotation annotation : entry.getValue()) {
+                        qualifiers.add((Qualifier<U>) Qualifiers.byAnnotation(
+                                annotationMetadata,
+                                AnnotationReflection.toAnnotationValue(annotation)
+                        ));
                     }
                 }
-                return Qualifiers.byQualifiers(qualifiers);
             }
+            return qualifiers.size() == 1
+                    ? qualifiers.get(0)
+                    : Qualifiers.byQualifiers(qualifiers.toArray(new Qualifier[0]));
         }
         return null;
     }
@@ -129,6 +125,7 @@ final class OdiAnnotationsImpl implements OdiAnnotations {
             return AnnotationMetadata.EMPTY_METADATA;
         }
         MutableAnnotationMetadata annotationMetadata = new MutableAnnotationMetadata();
+        Map<String, Integer> qualifierCounts = qualifierCounts(annotations);
         for (Annotation annotation : annotations) {
             if (metaAnnotations.get().isQualifier(annotation)) {
                 if (AnnotationUtils.isAny(annotation)) {
@@ -140,10 +137,20 @@ final class OdiAnnotationsImpl implements OdiAnnotations {
                 } else {
                     String[] nonBinding = metaAnnotations.get().getQualifierNonBinding(annotation).toArray(new String[0]);
                     AnnotationValue<Annotation> value = AnnotationReflection.toAnnotationValue(annotation);
+                    String annotationName = value.getAnnotationName();
                     final Map<CharSequence, Object> values = new LinkedHashMap<>(value.getValues());
-                    annotationMetadata.addDeclaredAnnotation(value.getAnnotationName(), values);
+                    if (qualifierCounts.getOrDefault(annotationName, 0) > 1) {
+                        String repeatableContainer = annotationMetadata.findRepeatableAnnotation(annotationName).orElse(null);
+                        if (repeatableContainer != null) {
+                            annotationMetadata.addDeclaredRepeatable(repeatableContainer, value);
+                        } else {
+                            annotationMetadata.addDeclaredAnnotation(annotationName, values);
+                        }
+                    } else {
+                        annotationMetadata.addDeclaredAnnotation(annotationName, values);
+                    }
                     annotationMetadata.addDeclaredStereotype(
-                            List.of(value.getAnnotationName()),
+                            List.of(annotationName),
                             MetaAnnotationSupport.META_ANNOTATION_QUALIFIER, Collections.singletonMap(
                                     AnnotationUtil.NON_BINDING_ATTRIBUTE, nonBinding
                             )
@@ -152,5 +159,27 @@ final class OdiAnnotationsImpl implements OdiAnnotations {
             }
         }
         return annotationMetadata;
+    }
+
+    private Map<String, Integer> qualifierCounts(Annotation[] annotations) {
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (Annotation annotation : annotations) {
+            if (metaAnnotations.get().isQualifier(annotation)) {
+                counts.merge(AnnotationUtils.findAnnotationClass(annotation).getName(), 1, Integer::sum);
+            }
+        }
+        return counts;
+    }
+
+    private Map<Class<? extends Annotation>, List<Annotation>> groupQualifierAnnotations(Annotation[] annotations) {
+        Map<Class<? extends Annotation>, List<Annotation>> grouped = new LinkedHashMap<>();
+        for (Annotation annotation : annotations) {
+            Class<? extends Annotation> annotationClass = AnnotationUtils.findAnnotationClass(annotation);
+            if (!isQualifier(annotationClass)) {
+                throw new IllegalArgumentException("Not a valid qualifier annotation type: " + annotationClass.getName());
+            }
+            grouped.computeIfAbsent(annotationClass, ignored -> new ArrayList<>()).add(annotation);
+        }
+        return grouped;
     }
 }

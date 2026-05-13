@@ -25,6 +25,7 @@ import io.micronaut.core.type.Argument;
 import io.micronaut.inject.AdvisedBeanType;
 import io.micronaut.inject.BeanDefinition;
 import io.micronaut.inject.ExecutableMethod;
+import io.micronaut.inject.qualifiers.AnyQualifier;
 import io.micronaut.inject.qualifiers.Qualifiers;
 import jakarta.enterprise.context.spi.CreationalContext;
 import jakarta.enterprise.context.spi.Context;
@@ -191,7 +192,11 @@ final class OdiExecutableInvokerExecutor implements OdiInvokerExecutor {
             if (typeArgument.getType() == Object.class) {
                 return beanContainer.getEvent();
             }
-            return beanContainer.getEvent().select((Class) typeArgument.getType());
+            Qualifier<?> eventQualifier = Qualifiers.forArgument(argument);
+            if (AnyQualifier.INSTANCE.equals(eventQualifier)) {
+                eventQualifier = DefaultQualifier.instance();
+            }
+            return beanContainer.getEvent((Argument) typeArgument, argument.getAnnotationMetadata(), eventQualifier);
         }
         if (argumentType == Instance.class) {
             Argument<?> typeArgument = argument.getFirstTypeVariable().orElse(Argument.OBJECT_ARGUMENT);

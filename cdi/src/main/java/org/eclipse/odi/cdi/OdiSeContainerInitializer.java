@@ -16,7 +16,9 @@
 package org.eclipse.odi.cdi;
 
 import java.lang.annotation.Annotation;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Predicate;
 
@@ -37,11 +39,30 @@ import jakarta.enterprise.inject.spi.Extension;
  * An implementation of {@link SeContainerInitializer} for ODI.
  */
 public class OdiSeContainerInitializer extends SeContainerInitializer implements ApplicationContextBuilder {
+    private static final String ADDED_BEAN_CLASSES_PROPERTY = "org.eclipse.odi.cdi.se.added-bean-classes";
+
     private final ApplicationContextBuilder contextBuilder = new OdiApplicationContextBuilder();
+    private final List<String> addedBeanClassNames = new ArrayList<>();
 
     @Override
     public SeContainerInitializer addBeanClasses(Class<?>... classes) {
-        throw new UnsupportedOperationException("addBeanClasses is not yet supported");
+        if (ArrayUtils.isNotEmpty(classes)) {
+            ClassLoader classLoader = null;
+            for (Class<?> aClass : classes) {
+                if (!addedBeanClassNames.contains(aClass.getName())) {
+                    addedBeanClassNames.add(aClass.getName());
+                }
+                contextBuilder.packages(aClass.getPackageName());
+                if (classLoader == null) {
+                    classLoader = aClass.getClassLoader();
+                }
+            }
+            if (classLoader != null) {
+                contextBuilder.classLoader(classLoader);
+            }
+            contextBuilder.properties(Collections.singletonMap(ADDED_BEAN_CLASSES_PROPERTY, String.join(",", addedBeanClassNames)));
+        }
+        return this;
     }
 
     @Override

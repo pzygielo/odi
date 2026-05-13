@@ -5,6 +5,8 @@ plugins {
 
 description = "CDI TCK runner"
 
+val generatedCdiTckSources = layout.buildDirectory.dir("generated/sources/cdiTck/java/test")
+
 dependencies {
     annotationProcessor(project(":micronaut-odi-processor-cdi"))
 
@@ -21,6 +23,8 @@ dependencies {
     implementation(mn.logback)
     implementation(mn.micronaut.inject.java)
 
+    testAnnotationProcessor(project(":micronaut-odi-processor-cdi"))
+
     testImplementation(libs.cdi.tck.impl) {
         artifact {
             classifier = "sources"
@@ -32,6 +36,44 @@ dependencies {
             type = "xml"
         }
     }
+}
+
+val observingBeanSource = "org/jboss/cdi/tck/tests/se/events/lifecycle/ObservingBean.java"
+val addedBeanClassesProperty = "org.eclipse.odi.cdi.se.added-bean-classes"
+
+val unpackCdiTckSources by tasks.registering {
+    val outputFile = generatedCdiTckSources.map { it.file(observingBeanSource) }
+    inputs.files(configurations.testRuntimeClasspath)
+    outputs.file(outputFile)
+    doLast {
+        val sourceJar = configurations.testRuntimeClasspath.get()
+            .single { it.name.contains("cdi-tck-core-impl") && it.name.endsWith("-sources.jar") }
+        val sourceFile = zipTree(sourceJar).matching {
+            include(observingBeanSource)
+        }.singleFile
+        val source = sourceFile.readText()
+            .replace(
+                "import jakarta.enterprise.context.ApplicationScoped;\n",
+                "import jakarta.enterprise.context.ApplicationScoped;\nimport io.micronaut.context.annotation.Requires;\n"
+            )
+            .replace(
+                "@ApplicationScoped\npublic class ObservingBean",
+                "@Requires(property = \"$addedBeanClassesProperty\", pattern = \".*org.jboss.cdi.tck.tests.se.events.lifecycle.ObservingBean.*\")\n@ApplicationScoped\npublic class ObservingBean"
+            )
+        val targetFile = outputFile.get().asFile
+        targetFile.parentFile.mkdirs()
+        targetFile.writeText(source)
+    }
+}
+
+sourceSets {
+    test {
+        java.srcDir(generatedCdiTckSources)
+    }
+}
+
+tasks.named("compileTestJava") {
+    dependsOn(unpackCdiTckSources)
 }
 
 testlogger {

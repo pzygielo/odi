@@ -36,11 +36,6 @@
                 </methods>
             </class>
 
-            <class name="org.jboss.cdi.tck.tests.se.events.lifecycle.StartupShutdownTest">
-                <methods>
-                    <exclude name="testEvents"/>
-                </methods>
-            </class>
             <class name="org.jboss.cdi.tck.interceptors.tests.contract.interceptorLifeCycle.InterceptorLifeCycleTest">
                 <methods>
                     <!-- TCK expects destroy interceptors initialized at the same time as bean retrieved -->

@@ -52,6 +52,13 @@ final class ObservesMethodProcessor implements ExecutableMethodProcessor<Observe
 
     @Override
     public <B> void process(BeanDefinition<B> beanDefinition, ExecutableMethod<B, ?> method) {
+        processObservedMethod(beanDefinition, method);
+    }
+
+    <B> void processObservedMethod(BeanDefinition<B> beanDefinition, ExecutableMethod<B, ?> method) {
+        if (!method.hasAnnotation(ObservesMethod.class)) {
+            return;
+        }
         // Find possibly proxied BeanDefinition
         BeanDefinition<?> targetBeanDefinition = findTargetBeanDefinitions(beanDefinition);
         if (targetBeanDefinition == null) {

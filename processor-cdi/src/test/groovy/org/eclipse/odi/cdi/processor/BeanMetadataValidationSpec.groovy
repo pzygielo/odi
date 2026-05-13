@@ -139,4 +139,185 @@ class Cream {
         def e = thrown(RuntimeException)
         e.message.contains("Bean metadata type parameter must be assignable from the declaring bean type")
     }
+
+    void "test intercepted bean metadata can only be injected into interceptor beans"() {
+        when:
+        buildBeanDefinition('interceptedmetadata.Foo', '''
+package interceptedmetadata;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.inject.Intercepted;
+import jakarta.enterprise.inject.spi.Bean;
+import jakarta.inject.Inject;
+
+@Dependent
+class Foo {
+    @Inject
+    @Intercepted
+    Bean<Foo> bean;
+}
+''')
+
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains("@Intercepted Bean metadata may only be injected into interceptor beans")
+    }
+
+    void "test intercepted bean metadata must use unbounded wildcard"() {
+        when:
+        buildBeanDefinition('interceptedmetadata.BadInterceptor', '''
+package interceptedmetadata;
+
+import jakarta.enterprise.inject.Intercepted;
+import jakarta.enterprise.inject.spi.Bean;
+import jakarta.inject.Inject;
+import jakarta.interceptor.AroundInvoke;
+import jakarta.interceptor.Interceptor;
+import jakarta.interceptor.InterceptorBinding;
+import jakarta.interceptor.InvocationContext;
+import java.lang.annotation.Retention;
+import java.lang.annotation.Target;
+
+import static java.lang.annotation.ElementType.METHOD;
+import static java.lang.annotation.ElementType.TYPE;
+import static java.lang.annotation.RetentionPolicy.RUNTIME;
+
+@Binding
+@Interceptor
+class BadInterceptor {
+    @Inject
+    @Intercepted
+    Bean<Cream> bean;
+
+    @AroundInvoke
+    Object intercept(InvocationContext context) throws Exception {
+        return context.proceed();
+    }
+}
+
+class Cream {
+}
+
+@InterceptorBinding
+@Target({TYPE, METHOD})
+@Retention(RUNTIME)
+@interface Binding {
+}
+''')
+
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains("@Intercepted Bean metadata must use Bean<?>")
+    }
+
+    void "test interceptor metadata can only be injected into interceptor beans"() {
+        when:
+        buildBeanDefinition('interceptormetadata.Foo', '''
+package interceptormetadata;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.inject.spi.Interceptor;
+import jakarta.inject.Inject;
+
+@Dependent
+class Foo {
+    @Inject
+    Interceptor<Foo> interceptor;
+}
+''')
+
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains("Interceptor metadata may only be injected into interceptor beans")
+    }
+
+    void "test interceptor metadata type parameter must match interceptor bean"() {
+        when:
+        buildBeanDefinition('interceptormetadata.BadInterceptor', '''
+package interceptormetadata;
+
+import jakarta.enterprise.inject.spi.Interceptor;
+import jakarta.inject.Inject;
+import jakarta.interceptor.AroundInvoke;
+import jakarta.interceptor.InterceptorBinding;
+import jakarta.interceptor.InvocationContext;
+import java.lang.annotation.Retention;
+import java.lang.annotation.Target;
+
+import static java.lang.annotation.ElementType.METHOD;
+import static java.lang.annotation.ElementType.TYPE;
+import static java.lang.annotation.RetentionPolicy.RUNTIME;
+
+@Binding
+@jakarta.interceptor.Interceptor
+class BadInterceptor {
+    @Inject
+    Interceptor<Cream> interceptor;
+
+    @AroundInvoke
+    Object intercept(InvocationContext context) throws Exception {
+        return context.proceed();
+    }
+}
+
+class Cream {
+}
+
+@InterceptorBinding
+@Target({TYPE, METHOD})
+@Retention(RUNTIME)
+@interface Binding {
+}
+''')
+
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains("Interceptor metadata type parameter must be assignable from the interceptor bean type")
+    }
+
+    void "test interceptor and intercepted bean metadata compile in interceptor bean"() {
+        expect:
+        buildBeanDefinition('interceptormetadata.GoodInterceptor', '''
+package interceptormetadata;
+
+import jakarta.enterprise.inject.Intercepted;
+import jakarta.enterprise.inject.spi.Bean;
+import jakarta.enterprise.inject.spi.Interceptor;
+import jakarta.inject.Inject;
+import jakarta.interceptor.AroundInvoke;
+import jakarta.interceptor.InterceptorBinding;
+import jakarta.interceptor.InvocationContext;
+import java.lang.annotation.Retention;
+import java.lang.annotation.Target;
+
+import static java.lang.annotation.ElementType.METHOD;
+import static java.lang.annotation.ElementType.TYPE;
+import static java.lang.annotation.RetentionPolicy.RUNTIME;
+
+@Binding
+@jakarta.interceptor.Interceptor
+class GoodInterceptor {
+    @Inject
+    Bean<GoodInterceptor> bean;
+
+    @Inject
+    Interceptor<GoodInterceptor> interceptor;
+
+    @Inject
+    @Intercepted
+    Bean<?> interceptedBean;
+
+    @AroundInvoke
+    Object intercept(InvocationContext context) throws Exception {
+        return context.proceed();
+    }
+}
+
+@InterceptorBinding
+@Target({TYPE, METHOD})
+@Retention(RUNTIME)
+@interface Binding {
+}
+''')
+    }
 }

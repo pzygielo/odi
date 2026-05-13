@@ -44,6 +44,7 @@ import jakarta.enterprise.inject.Any;
 import jakarta.enterprise.util.Nonbinding;
 import jakarta.enterprise.inject.Default;
 import jakarta.enterprise.inject.Disposes;
+import jakarta.enterprise.inject.Intercepted;
 import jakarta.enterprise.inject.Instance;
 import jakarta.enterprise.inject.Produces;
 import jakarta.enterprise.inject.Stereotype;
@@ -631,6 +632,10 @@ public final class CdiUtil {
                 && validateBeanMetadataTypeParameter(context, classElement, owningElement)) {
             return true;
         }
+        if (jakarta.enterprise.inject.spi.Interceptor.class.getName().equals(classElement.getName())
+                && validateInterceptorMetadataInjectionPoint(context, classElement, owningElement)) {
+            return true;
+        }
         if (classElement.getName().equals(Instance.class.getName()) && isNoGenericType(classElement)) {
             context.fail("jakarta.enterprise.inject.Instance must have a required type parameter specified", owningElement);
             return true;
@@ -645,6 +650,9 @@ public final class CdiUtil {
     private static boolean validateBeanMetadataTypeParameter(VisitorContext context,
                                                              ClassElement beanMetadataType,
                                                              Element owningElement) {
+        if (owningElement.hasAnnotation(Intercepted.class)) {
+            return validateInterceptedBeanMetadataInjectionPoint(context, beanMetadataType, owningElement);
+        }
         List<ClassElement> typeArguments = resolvedTypeArguments(beanMetadataType);
         if (typeArguments.isEmpty()) {
             return false;
@@ -659,6 +667,64 @@ public final class CdiUtil {
             return true;
         }
         return false;
+    }
+
+    private static boolean validateInterceptedBeanMetadataInjectionPoint(VisitorContext context,
+                                                                        ClassElement beanMetadataType,
+                                                                        Element owningElement) {
+        ClassElement owningType = resolveOwningType(owningElement);
+        if (!isInterceptorBean(owningType)) {
+            context.fail("@Intercepted Bean metadata may only be injected into interceptor beans", owningElement);
+            return true;
+        }
+        List<ClassElement> typeArguments = resolvedTypeArguments(beanMetadataType);
+        if (!typeArguments.isEmpty() && !isUnboundedWildcard(typeArguments.get(0))) {
+            context.fail("@Intercepted Bean metadata must use Bean<?>", owningElement);
+            return true;
+        }
+        return false;
+    }
+
+    private static boolean validateInterceptorMetadataInjectionPoint(VisitorContext context,
+                                                                    ClassElement interceptorMetadataType,
+                                                                    Element owningElement) {
+        ClassElement owningType = resolveOwningType(owningElement);
+        if (!isInterceptorBean(owningType)) {
+            context.fail("Interceptor metadata may only be injected into interceptor beans", owningElement);
+            return true;
+        }
+        List<ClassElement> typeArguments = resolvedTypeArguments(interceptorMetadataType);
+        if (typeArguments.isEmpty()) {
+            return false;
+        }
+        ClassElement metadataBeanType = typeArguments.get(0);
+        if (metadataBeanType instanceof WildcardElement || metadataBeanType.isWildcard() || isObjectType(metadataBeanType)) {
+            return false;
+        }
+        if (!metadataBeanType.isAssignable(owningType)) {
+            context.fail("Interceptor metadata type parameter must be assignable from the interceptor bean type", owningElement);
+            return true;
+        }
+        return false;
+    }
+
+    private static boolean isInterceptorBean(ClassElement classElement) {
+        return classElement != null
+                && (classElement.hasAnnotation(Interceptor.class)
+                || classElement.hasStereotype(Interceptor.class));
+    }
+
+    private static boolean isUnboundedWildcard(ClassElement typeArgument) {
+        if (!(typeArgument instanceof WildcardElement) && !typeArgument.isWildcard()) {
+            return false;
+        }
+        if (typeArgument instanceof WildcardElement) {
+            WildcardElement wildcard = (WildcardElement) typeArgument;
+            List<? extends ClassElement> upperBounds = wildcard.getUpperBounds();
+            return wildcard.getLowerBounds().isEmpty()
+                    && (upperBounds.isEmpty() || (upperBounds.size() == 1 && isObjectType(upperBounds.get(0))));
+        }
+        return isObjectType(typeArgument);
     }
 
     private static ClassElement resolveContextualBeanType(Element owningElement) {
@@ -683,6 +749,26 @@ public final class CdiUtil {
         }
         if (owningElement instanceof MemberElement) {
             return ((MemberElement) owningElement).getOwningType();
+        }
+        return null;
+    }
+
+    private static ClassElement resolveOwningType(Element owningElement) {
+        if (owningElement instanceof FieldElement) {
+            return ((FieldElement) owningElement).getOwningType();
+        }
+        if (owningElement instanceof ParameterElement) {
+            try {
+                return ((ParameterElement) owningElement).getMethodElement().getOwningType();
+            } catch (IllegalStateException e) {
+                return null;
+            }
+        }
+        if (owningElement instanceof MemberElement) {
+            return ((MemberElement) owningElement).getOwningType();
+        }
+        if (owningElement instanceof ClassElement) {
+            return (ClassElement) owningElement;
         }
         return null;
     }

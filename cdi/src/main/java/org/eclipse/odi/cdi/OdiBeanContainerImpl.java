@@ -45,6 +45,7 @@ import jakarta.enterprise.inject.Any;
 import jakarta.enterprise.inject.Default;
 import jakarta.enterprise.inject.Instance;
 import jakarta.enterprise.inject.UnsatisfiedResolutionException;
+import jakarta.enterprise.inject.UnproxyableResolutionException;
 import jakarta.enterprise.inject.spi.Bean;
 import jakarta.enterprise.inject.spi.InterceptionType;
 import jakarta.enterprise.inject.spi.Interceptor;
@@ -323,6 +324,9 @@ final class OdiBeanContainerImpl implements OdiBeanContainer {
             CreationalContext creationalContext = ctx;
             if (creationalContext == null) {
                 creationalContext = createCreationalContext(odiBean);
+            }
+            if (odiBean.getBeanDefinition().hasAnnotation(org.eclipse.odi.cdi.annotation.OdiUnproxyableBean.class)) {
+                throw new UnproxyableResolutionException("Bean type is not proxyable: " + odiBean.getBeanClass().getName());
             }
             Class<? extends Annotation> scope = odiBean.getScope();
             Object instance;

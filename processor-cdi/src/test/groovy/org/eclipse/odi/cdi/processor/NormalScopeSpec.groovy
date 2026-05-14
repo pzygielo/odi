@@ -20,9 +20,11 @@ import io.micronaut.annotation.processing.test.AbstractTypeElementSpec
 import io.micronaut.aop.InterceptedProxy
 import io.micronaut.runtime.context.scope.ScopedProxy
 import jakarta.enterprise.context.ApplicationScoped
+import jakarta.enterprise.context.Dependent
 import jakarta.enterprise.context.RequestScoped
 
 import jakarta.inject.Scope
+import org.eclipse.odi.cdi.annotation.OdiUnproxyableBean
 
 class NormalScopeSpec extends AbstractTypeElementSpec {
 
@@ -96,9 +98,9 @@ class Test {
         getBean(context, 'appscope.Test') instanceof InterceptedProxy
     }
 
-    void 'test fail compilation with normal scope final class'() {
-        when:
-        buildBeanDefinition('appscope.Test', '''
+    void 'test normal scoped final class compiles as unproxyable bean'() {
+        given:
+        def definition = buildBeanDefinition('appscope.Test', '''
 package appscope;
 
 @jakarta.enterprise.context.ApplicationScoped
@@ -107,9 +109,11 @@ final class Test {
 }
 
 ''')
-        then:
-        def e = thrown(RuntimeException)
-        e.message.contains('Managed bean classes that are final must have @Dependent scope')
+        expect:
+        definition != null
+        definition.hasAnnotation(OdiUnproxyableBean)
+        definition.getScope().get() == Dependent
+        !definition.hasStereotype(ScopedProxy)
     }
 
     void 'test fail compilation with multiple declared scopes'() {
@@ -144,9 +148,9 @@ final class Test {
 ''')
     }
 
-    void 'test fail compilation with normal scoped bean constructor with parameters'() {
-        when:
-        buildBeanDefinition('appscope.Test', '''
+    void 'test normal scoped bean constructor with parameters compiles as unproxyable bean'() {
+        given:
+        def definition = buildBeanDefinition('appscope.Test', '''
 package appscope;
 
 import jakarta.enterprise.inject.spi.BeanManager;
@@ -160,14 +164,16 @@ class Test {
 }
 
 ''')
-        then:
-        def e = thrown(RuntimeException)
-        e.message.contains('Managed bean classes with normal scope must declare a non-private no-arguments constructor')
+        expect:
+        definition != null
+        definition.hasAnnotation(OdiUnproxyableBean)
+        definition.getScope().get() == Dependent
+        !definition.hasStereotype(ScopedProxy)
     }
 
-    void 'test fail compilation with normal scoped private constructor'() {
-        when:
-        buildBeanDefinition('appscope.Test', '''
+    void 'test normal scoped private constructor compiles as unproxyable bean'() {
+        given:
+        def definition = buildBeanDefinition('appscope.Test', '''
 package appscope;
 
 @jakarta.enterprise.context.RequestScoped
@@ -177,9 +183,11 @@ class Test {
 }
 
 ''')
-        then:
-        def e = thrown(RuntimeException)
-        e.message.contains('Managed bean classes with normal scope must declare a non-private no-arguments constructor')
+        expect:
+        definition != null
+        definition.hasAnnotation(OdiUnproxyableBean)
+        definition.getScope().get() == Dependent
+        !definition.hasStereotype(ScopedProxy)
     }
 
     void 'test normal scoped protected no arguments constructor compiles'() {
@@ -267,9 +275,9 @@ class Test {
 ''')
     }
 
-    void 'test fail compilation with normal scoped public final method'() {
-        when:
-        buildBeanDefinition('appscope.Test', '''
+    void 'test normal scoped public final method compiles as unproxyable bean'() {
+        given:
+        def definition = buildBeanDefinition('appscope.Test', '''
 package appscope;
 
 @jakarta.enterprise.context.RequestScoped
@@ -280,14 +288,16 @@ class Test {
 }
 
 ''')
-        then:
-        def e = thrown(RuntimeException)
-        e.message.contains('Managed bean classes with non-private, non-static final methods must have @Dependent scope')
+        expect:
+        definition != null
+        definition.hasAnnotation(OdiUnproxyableBean)
+        definition.getScope().get() == Dependent
+        !definition.hasStereotype(ScopedProxy)
     }
 
-    void 'test fail compilation with normal scoped protected final method'() {
-        when:
-        buildBeanDefinition('appscope.Test', '''
+    void 'test normal scoped protected final method compiles as unproxyable bean'() {
+        given:
+        def definition = buildBeanDefinition('appscope.Test', '''
 package appscope;
 
 @jakarta.enterprise.context.RequestScoped
@@ -297,14 +307,16 @@ class Test {
 }
 
 ''')
-        then:
-        def e = thrown(RuntimeException)
-        e.message.contains('Managed bean classes with non-private, non-static final methods must have @Dependent scope')
+        expect:
+        definition != null
+        definition.hasAnnotation(OdiUnproxyableBean)
+        definition.getScope().get() == Dependent
+        !definition.hasStereotype(ScopedProxy)
     }
 
-    void 'test fail compilation with normal scoped package private final method'() {
-        when:
-        buildBeanDefinition('appscope.Test', '''
+    void 'test normal scoped package private final method compiles as unproxyable bean'() {
+        given:
+        def definition = buildBeanDefinition('appscope.Test', '''
 package appscope;
 
 @jakarta.enterprise.context.RequestScoped
@@ -314,14 +326,16 @@ class Test {
 }
 
 ''')
-        then:
-        def e = thrown(RuntimeException)
-        e.message.contains('Managed bean classes with non-private, non-static final methods must have @Dependent scope')
+        expect:
+        definition != null
+        definition.hasAnnotation(OdiUnproxyableBean)
+        definition.getScope().get() == Dependent
+        !definition.hasStereotype(ScopedProxy)
     }
 
-    void 'test fail compilation with normal scoped inherited final method'() {
-        when:
-        buildBeanDefinition('appscope.Test', '''
+    void 'test normal scoped inherited final method compiles as unproxyable bean'() {
+        given:
+        def definition = buildBeanDefinition('appscope.Test', '''
 package appscope;
 
 class Base {
@@ -335,9 +349,11 @@ class Test extends Base {
 }
 
 ''')
-        then:
-        def e = thrown(RuntimeException)
-        e.message.contains('Managed bean classes with non-private, non-static final methods must have @Dependent scope')
+        expect:
+        definition != null
+        definition.hasAnnotation(OdiUnproxyableBean)
+        definition.getScope().get() == Dependent
+        !definition.hasStereotype(ScopedProxy)
     }
 
     void 'test normal scoped private final method compiles'() {

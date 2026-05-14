@@ -459,6 +459,33 @@ class Product {
 ''')
     }
 
+    void "test injection point resolving to unproxyable normal scoped bean fails"() {
+        when:
+        withBeanClasses('unproxyablefinal.Consumer,unproxyablefinal.Tuna') {
+            buildBeanDefinition('unproxyablefinal.Consumer', '''
+package unproxyablefinal;
+
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.context.RequestScoped;
+import jakarta.inject.Inject;
+
+@Dependent
+class Consumer {
+    @Inject
+    Tuna tuna;
+}
+
+@RequestScoped
+final class Tuna {
+}
+''')
+        }
+
+        then:
+        def e = thrown(RuntimeException)
+        e.message.contains("Unproxyable dependency for injection point of type unproxyablefinal.Tuna")
+    }
+
     void "test disabled alternative is unavailable for injection"() {
         when:
         withBeanClasses('disabledalternative.Sea,disabledalternative.CrabSpider') {

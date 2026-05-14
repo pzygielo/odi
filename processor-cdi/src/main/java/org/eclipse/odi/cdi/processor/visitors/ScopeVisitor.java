@@ -20,6 +20,7 @@ import io.micronaut.core.annotation.Vetoed;
 import io.micronaut.inject.ast.ClassElement;
 import io.micronaut.inject.visitor.TypeElementVisitor;
 import io.micronaut.inject.visitor.VisitorContext;
+import io.micronaut.runtime.context.scope.ScopedProxy;
 import jakarta.enterprise.context.Dependent;
 import org.eclipse.odi.cdi.processor.CdiUtil;
 
@@ -44,17 +45,14 @@ public class ScopeVisitor implements TypeElementVisitor<Object, Object> {
             if (CdiUtil.validateGenericBeanScope(context, element)) {
                 return;
             }
-            if (CdiUtil.validateNormalScopeFinalClass(context, element)) {
-                return;
-            }
-            if (CdiUtil.validateNormalScopeConstructor(context, element)) {
-                return;
-            }
             if (CdiUtil.validateNormalScopePublicFields(context, element)) {
                 return;
             }
-            if (CdiUtil.validateNormalScopeFinalMethods(context, element)) {
-                return;
+            if (CdiUtil.markUnproxyableNormalScopedBean(element)) {
+                CdiUtil.removeNormalScopeAnnotations(context, element);
+                element.annotate(Dependent.class);
+                element.removeAnnotation(ScopedProxy.class);
+                element.removeStereotype(ScopedProxy.class);
             }
             CdiUtil.visitBeanDefinition(context, element);
             CdiUtil.visitPriority(context, element);

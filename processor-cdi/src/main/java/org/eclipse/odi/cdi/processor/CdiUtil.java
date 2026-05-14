@@ -79,6 +79,7 @@ public final class CdiUtil {
     public static final String BUILD_COMPATIBLE_EXTENSIONS_OPTION = "micronaut.cdi.build.compatible.extensions";
     private static final String SELECTED_ALTERNATIVES_OPTION = "odi.selected-alternatives";
     private static final String DEPLOYMENT_EXCEPTION_MARKER = "[ODI_DEPLOYMENT_EXCEPTION] ";
+    private static final String ODI_UNPROXYABLE_BEAN = org.eclipse.odi.cdi.processor.AnnotationUtil.ANN_ODI_UNPROXYABLE_BEAN;
 
     private CdiUtil() {
     }
@@ -939,6 +940,31 @@ public final class CdiUtil {
         return false;
     }
 
+    public static boolean markUnproxyableNormalScopedBean(ClassElement classElement) {
+        if (!classElement.hasStereotype(jakarta.enterprise.context.NormalScope.class.getName())) {
+            return false;
+        }
+        if (classElement.isFinal()
+                || !hasNonPrivateNoArgsConstructor(classElement)
+                || hasNonPrivateFinalMethod(classElement)) {
+            classElement.annotate(ODI_UNPROXYABLE_BEAN);
+            return true;
+        }
+        return false;
+    }
+
+    public static void removeNormalScopeAnnotations(VisitorContext context, ClassElement classElement) {
+        for (String annotationName : List.copyOf(classElement.getDeclaredAnnotationNames())) {
+            boolean normalScope = context.getClassElement(annotationName)
+                    .map(annotation -> annotation.hasDeclaredAnnotation(jakarta.enterprise.context.NormalScope.class.getName())
+                            || annotation.hasStereotype(jakarta.enterprise.context.NormalScope.class.getName()))
+                    .orElse(false);
+            if (normalScope) {
+                classElement.removeAnnotation(annotationName);
+            }
+        }
+    }
+
     public static boolean validateNormalScopeConstructor(VisitorContext context, ClassElement classElement) {
         if (!classElement.hasStereotype(jakarta.enterprise.context.NormalScope.class.getName())) {
             return false;
@@ -1000,6 +1026,18 @@ public final class CdiUtil {
         return classElement.getAccessibleConstructors()
                 .stream()
                 .anyMatch(constructor -> constructor.getParameters().length == 0);
+    }
+
+    private static boolean hasNonPrivateFinalMethod(ClassElement classElement) {
+        for (MethodElement method : classElement.getEnclosedElements(ElementQuery.ALL_METHODS
+                .onlyInstance()
+                .includeOverriddenMethods()
+                .includeHiddenElements())) {
+            if (method.isFinal() && !method.isPrivate() && !method.isSynthetic()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static boolean validateNormalScopePublicFields(VisitorContext context, ClassElement classElement) {
@@ -1130,6 +1168,11 @@ public final class CdiUtil {
                     + "Unsatisfied dependency for injection point of type " + injectPointType.getName(), injectPoint);
             return true;
         }
+        if (candidates.size() == 1 && candidates.iterator().next().unproxyable) {
+            context.fail(DEPLOYMENT_EXCEPTION_MARKER
+                    + "Unproxyable dependency for injection point of type " + injectPointType.getName(), injectPoint);
+            return true;
+        }
         if (candidates.size() > 1) {
             if (hasTypeArguments(injectPointType, false) || candidates.stream().anyMatch(ResolvableCandidate::requiresRuntimeResolution)) {
                 return false;
@@ -1154,7 +1197,11 @@ public final class CdiUtil {
                 && isBeanEnabled(context, candidate)
                 && matchesRequiredQualifiers(context, injectPoint, candidate)
                 && hasBeanTypeAssignableToRequiredType(injectPointType, candidate)) {
-            candidates.add(new ResolvableCandidate(candidate.getName(), false, requiresRuntimeResolution(candidate)));
+            candidates.add(new ResolvableCandidate(
+                    candidate.getName(),
+                    false,
+                    requiresRuntimeResolution(candidate),
+                    isUnproxyableNormalScopedBean(candidate)));
         }
     }
 
@@ -1203,7 +1250,8 @@ public final class CdiUtil {
             candidates.add(new ResolvableCandidate(
                     producer.getDeclaringType().getName() + "." + producer.getName(),
                     true,
-                    requiresRuntimeResolution(producer) || requiresRuntimeResolution(producer.getDeclaringType()))
+                    requiresRuntimeResolution(producer) || requiresRuntimeResolution(producer.getDeclaringType()),
+                    false)
             );
         }
     }
@@ -1228,6 +1276,9 @@ public final class CdiUtil {
 
     private static Set<String> configuredBeanClasses(VisitorContext context) {
         String classNames = context.getOptions().get(BEAN_CLASSES_OPTION);
+        if (classNames == null || classNames.isBlank()) {
+            classNames = System.getProperty(BEAN_CLASSES_OPTION);
+        }
         if (classNames == null || classNames.isBlank()) {
             return Set.of();
         }
@@ -1437,6 +1488,14 @@ public final class CdiUtil {
                 && isBeanClass(candidate);
     }
 
+    private static boolean isUnproxyableNormalScopedBean(ClassElement candidate) {
+        return candidate.hasAnnotation(ODI_UNPROXYABLE_BEAN)
+                || (candidate.hasStereotype(jakarta.enterprise.context.NormalScope.class.getName())
+                && (candidate.isFinal()
+                || !hasNonPrivateNoArgsConstructor(candidate)
+                || hasNonPrivateFinalMethod(candidate)));
+    }
+
     private static boolean hasBeanTypeAssignableToRequiredType(ClassElement injectPointType, ClassElement candidateType) {
         if (isRawGenericType(injectPointType)) {
             return hasBeanTypeAssignableToRawRequiredType(injectPointType, candidateType);
@@ -1466,11 +1525,13 @@ public final class CdiUtil {
         private final String description;
         private final boolean producer;
         private final boolean runtimeResolution;
+        private final boolean unproxyable;
 
-        private ResolvableCandidate(String description, boolean producer, boolean runtimeResolution) {
+        private ResolvableCandidate(String description, boolean producer, boolean runtimeResolution, boolean unproxyable) {
             this.description = description;
             this.producer = producer;
             this.runtimeResolution = runtimeResolution;
+            this.unproxyable = unproxyable;
         }
 
         String description() {

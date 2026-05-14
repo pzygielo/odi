@@ -95,7 +95,7 @@ public final class OdiObserverMethodRegistry {
 
     private <T> void collectMethods(Argument<T> argument, Qualifier<T> qualifier, Collection<ObserverMethod<?>> method) {
         for (OdiObserverMethod<?> observer : observerMethods) {
-            if (!matchesObservedType(observer.getObservedArgument(), argument)) {
+            if (!matchesObservedType(observer.getObservedType(), observer.getObservedArgument(), argument)) {
                 continue;
             }
             Qualifier observedQualifier = observer.getObservedQualifier();
@@ -116,19 +116,19 @@ public final class OdiObserverMethodRegistry {
         }
     }
 
-    private boolean matchesObservedType(Argument<?> observedArgument, Argument<?> eventArgument) {
-        if (OdiTypeUtils.isEventAssignable(observedArgument, eventArgument)) {
+    private boolean matchesObservedType(Type resolvedObservedType, Argument<?> observedArgument, Argument<?> eventArgument) {
+        if (OdiTypeUtils.isEventAssignable(resolvedObservedType, OdiTypeUtils.getArgumentType(eventArgument))) {
             return true;
         }
-        Class<?> observedType = observedArgument.getType();
-        Class<?> eventType = eventArgument.getType();
-        if (observedType.isAssignableFrom(eventType)) {
-            if (observedType.isArray() || eventType.isArray()) {
+        Class<?> observedRawType = observedArgument.getType();
+        Class<?> eventRawType = eventArgument.getType();
+        if (observedRawType.isAssignableFrom(eventRawType)) {
+            if (observedRawType.isArray() || eventRawType.isArray()) {
                 return true;
             }
-            Type resolvedEventType = OdiTypeUtils.resolveSuperType(eventArgument, observedType);
+            Type resolvedEventType = OdiTypeUtils.resolveSuperType(eventArgument, observedRawType);
             return resolvedEventType != null
-                    && OdiTypeUtils.isEventAssignable(OdiTypeUtils.getEventType(observedArgument), resolvedEventType);
+                    && OdiTypeUtils.isEventAssignable(resolvedObservedType, resolvedEventType);
         }
         return false;
     }

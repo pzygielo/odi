@@ -42,12 +42,6 @@
                     <exclude name=".*"/>
                 </methods>
             </class>
-            <class name="org.jboss.cdi.tck.tests.interceptors.invocation.InterceptorInvocationTest">
-                <methods>
-                    <!-- Not supported in CDI lite -->
-                    <exclude name="testDisposerMethodsAreIntercepted"/>
-                </methods>
-            </class>
             <class name="org.jboss.cdi.tck.tests.lookup.circular.CircularDependencyTest">
                 <!-- Properly detect circular dependency for lazy proxy types -->
                 <methods>

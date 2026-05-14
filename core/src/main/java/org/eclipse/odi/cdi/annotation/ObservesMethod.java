@@ -39,6 +39,11 @@ import static jakarta.enterprise.inject.spi.ObserverMethod.DEFAULT_PRIORITY;
 public @interface ObservesMethod {
 
     /**
+     * @return The type that declares the observer method.
+     */
+    Class<?> declaringType() default Object.class;
+
+    /**
      * @return The event arg index
      */
     int eventArgumentIndex() default 0;

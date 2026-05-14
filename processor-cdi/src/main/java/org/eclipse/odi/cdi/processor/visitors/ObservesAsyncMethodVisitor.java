@@ -15,6 +15,7 @@
  */
 package org.eclipse.odi.cdi.processor.visitors;
 
+import io.micronaut.core.annotation.AnnotationClassValue;
 import io.micronaut.core.annotation.AnnotationValue;
 import io.micronaut.inject.ast.MethodElement;
 import io.micronaut.inject.ast.ParameterElement;
@@ -49,6 +50,7 @@ public class ObservesAsyncMethodVisitor extends ParameterAnnotationInjectableMet
             currentClass.annotate(ApplicationScoped.class);
         }
         methodElement.annotate(AnnotationUtil.ANN_OBSERVES_METHOD, annotationValueBuilder -> {
+            annotationValueBuilder.member("declaringType", new AnnotationClassValue<>(methodElement.getDeclaringType().getName()));
             annotationValueBuilder.member("eventArgumentIndex", Arrays.asList(methodElement.getParameters()).indexOf(parameterElement));
             AnnotationValue<ObservesAsync> observesAnnotation = parameterElement.getAnnotation(ObservesAsync.class);
             annotationValueBuilder.member("eventArgumentIndex", Arrays.asList(methodElement.getParameters()).indexOf(parameterElement));

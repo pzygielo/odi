@@ -15,6 +15,7 @@
  */
 package org.eclipse.odi.cdi.events;
 
+import io.micronaut.core.annotation.AnnotationValue;
 import io.micronaut.core.annotation.Internal;
 import io.micronaut.core.type.Argument;
 import io.micronaut.inject.BeanDefinition;
@@ -27,11 +28,15 @@ import jakarta.enterprise.inject.spi.EventContext;
 import jakarta.enterprise.inject.spi.EventMetadata;
 import jakarta.enterprise.inject.spi.InjectionPoint;
 import org.eclipse.odi.cdi.OdiBeanContainer;
+import org.eclipse.odi.cdi.OdiTypeUtils;
 import org.eclipse.odi.cdi.annotation.ObservesMethod;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Type;
 import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -49,6 +54,7 @@ final class ExecutableObserverMethod<B, E> extends AbstractOdiObserverMethod<E> 
     private final BeanDefinition<B> beanDefinition;
     private final ExecutableMethod<B, Object> executableMethod;
     private final Argument<E> eventArgument;
+    private final Type observedType;
     private final io.micronaut.context.Qualifier<E> eventQualifier;
     private final boolean staticMethod;
     private Set<Annotation> observedQualifiers;
@@ -64,6 +70,7 @@ final class ExecutableObserverMethod<B, E> extends AbstractOdiObserverMethod<E> 
         this.executableMethod = executableMethod;
         int eventArgumentsIndex = observesMethodAnnotationValue.intValue("eventArgumentIndex").getAsInt();
         this.eventArgument = Objects.requireNonNull((Argument<E>) executableMethod.getArguments()[eventArgumentsIndex]);
+        this.observedType = resolveObservedType(beanDefinition, executableMethod, eventArgument, observesMethodAnnotationValue);
         this.eventQualifier = AnnotationUtils.qualifierFromQualifierMetadata(eventArgument.getAnnotationMetadata());
         this.staticMethod = observesMethodAnnotationValue.booleanValue("staticMethod").orElse(false);
     }
@@ -92,6 +99,11 @@ final class ExecutableObserverMethod<B, E> extends AbstractOdiObserverMethod<E> 
     @Override
     public Argument<E> getObservedArgument() {
         return eventArgument;
+    }
+
+    @Override
+    public Type getObservedType() {
+        return observedType;
     }
 
     @Override
@@ -160,5 +172,19 @@ final class ExecutableObserverMethod<B, E> extends AbstractOdiObserverMethod<E> 
         return "ExecutableObserverMethod: "
                 + executableMethod.getDeclaringType().getName()
                 + " " + executableMethod.getDescription();
+    }
+
+    private static Type resolveObservedType(BeanDefinition<?> beanDefinition,
+                                            ExecutableMethod<?, ?> executableMethod,
+                                            Argument<?> eventArgument,
+                                            AnnotationValue<ObservesMethod> observesMethodAnnotationValue) {
+        Type observedType = OdiTypeUtils.getEventType(eventArgument);
+        Class<?> declaringType = observesMethodAnnotationValue.classValue("declaringType").orElse(executableMethod.getDeclaringType());
+        List<Argument<?>> typeArguments = beanDefinition.getTypeArguments(declaringType);
+        Map<String, Type> substitutions = new LinkedHashMap<>();
+        for (Argument<?> typeArgument : typeArguments) {
+            substitutions.put(typeArgument.getName(), OdiTypeUtils.getArgumentType(typeArgument));
+        }
+        return OdiTypeUtils.resolveTypeVariables(observedType, substitutions);
     }
 }

@@ -539,17 +539,71 @@ public final class CdiUtil {
 
     public static void visitEventType(TypedElement eventType) {
         ClassElement requiredType = resolveInjectPointType(eventType);
+        visitEventType(eventType, requiredType, false);
+    }
+
+    public static void visitEventType(TypedElement eventType, ClassElement owningType, MethodElement methodElement) {
+        ClassElement requiredType = resolveInjectPointType(eventType);
+        if (requiredType == null) {
+            return;
+        }
+        ClassElement resolvedType = resolveTypeVariables(requiredType, resolveTypeArguments(owningType, methodElement));
+        if (resolvedType == requiredType
+                && (requiredType.isArray()
+                || requiredType.isRawType()
+                || !containsWildcard(requiredType))) {
+            return;
+        }
+        visitEventType(eventType, resolvedType, resolvedType != requiredType);
+    }
+
+    private static Map<String, ClassElement> resolveTypeArguments(ClassElement owningType, MethodElement methodElement) {
+        Map<String, ClassElement> typeArguments = new LinkedHashMap<>();
+        ClassElement declaringType = methodElement.getDeclaringType();
+        mergeTypeArguments(typeArguments, methodElement.getOwningType().getTypeArguments(declaringType.getName()));
+        mergeTypeArguments(typeArguments, owningType.getTypeArguments(declaringType.getName()));
+        mergeTypeArguments(typeArguments, declaringType.getTypeArguments());
+        return typeArguments;
+    }
+
+    private static void mergeTypeArguments(Map<String, ClassElement> target, Map<String, ClassElement> source) {
+        for (Map.Entry<String, ClassElement> entry : source.entrySet()) {
+            ClassElement typeArgument = unwrapResolvedTypeArgument(entry.getValue());
+            ClassElement existing = target.get(entry.getKey());
+            if (existing == null || (!isConcreteTypeArgument(existing) && isConcreteTypeArgument(typeArgument))) {
+                target.put(entry.getKey(), typeArgument);
+            }
+        }
+    }
+
+    private static ClassElement unwrapResolvedTypeArgument(ClassElement typeArgument) {
+        if (typeArgument instanceof GenericPlaceholderElement) {
+            return ((GenericPlaceholderElement) typeArgument).getResolved().orElse(typeArgument);
+        }
+        return typeArgument;
+    }
+
+    private static boolean isConcreteTypeArgument(ClassElement typeArgument) {
+        return !(typeArgument instanceof GenericPlaceholderElement)
+                && !Object.class.getName().equals(typeArgument.getName());
+    }
+
+    private static void visitEventType(TypedElement eventType, ClassElement requiredType, boolean force) {
         if (requiredType == null
                 || requiredType.isArray()
                 || requiredType.isRawType()
-                || !containsWildcard(requiredType)) {
+                || (!force && !containsWildcard(requiredType))) {
             return;
         }
-        visitRequiredType(eventType);
+        visitRequiredType(eventType, requiredType);
     }
 
     private static void visitRequiredType(TypedElement injectPoint) {
         ClassElement requiredType = resolveInjectPointType(injectPoint);
+        visitRequiredType(injectPoint, requiredType);
+    }
+
+    private static void visitRequiredType(TypedElement injectPoint, ClassElement requiredType) {
         if (requiredType == null || !hasTypeArguments(requiredType, false)) {
             return;
         }
@@ -563,6 +617,35 @@ public final class CdiUtil {
                 .member("lowerBoundCounts", typeArguments.lowerBoundCounts.stream().mapToInt(Integer::intValue).toArray())
                 .member("typeVariableNames", typeArguments.typeVariableNames.toArray(String[]::new))
                 .build());
+    }
+
+    private static ClassElement resolveTypeVariables(ClassElement type, Map<String, ClassElement> typeArguments) {
+        if (typeArguments.isEmpty()) {
+            return type;
+        }
+        if (type instanceof GenericPlaceholderElement) {
+            GenericPlaceholderElement placeholder = (GenericPlaceholderElement) type;
+            ClassElement resolved = typeArguments.get(placeholder.getVariableName());
+            if (resolved instanceof GenericPlaceholderElement) {
+                resolved = ((GenericPlaceholderElement) resolved).getResolved().orElse(resolved);
+            }
+            if (resolved == null) {
+                resolved = placeholder.getResolved().orElse(null);
+            }
+            return resolved == null ? type : resolved;
+        }
+        List<? extends ClassElement> boundTypes = type.getBoundGenericTypes();
+        if (boundTypes.isEmpty()) {
+            return type;
+        }
+        List<ClassElement> resolvedBoundTypes = new ArrayList<>(boundTypes.size());
+        boolean changed = false;
+        for (ClassElement boundType : boundTypes) {
+            ClassElement resolvedBoundType = resolveTypeVariables(boundType, typeArguments);
+            resolvedBoundTypes.add(resolvedBoundType);
+            changed |= resolvedBoundType != boundType;
+        }
+        return changed ? type.withTypeArguments(resolvedBoundTypes) : type;
     }
 
     private static ClassElement resolveInjectPointType(TypedElement injectPoint) {

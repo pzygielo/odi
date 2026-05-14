@@ -16,6 +16,7 @@
 package org.eclipse.odi.cdi.processor.visitors;
 
 import io.micronaut.context.annotation.Executable;
+import io.micronaut.core.annotation.AnnotationClassValue;
 import io.micronaut.core.annotation.AnnotationValue;
 import io.micronaut.inject.ast.MethodElement;
 import io.micronaut.inject.ast.ParameterElement;
@@ -53,6 +54,7 @@ public class ObservesMethodVisitor extends ParameterAnnotationInjectableMethodVi
         }
         methodElement.annotate(AnnotationUtil.ANN_OBSERVES_METHOD, annotationValueBuilder -> {
             AnnotationValue<Observes> observesAnnotation = parameterElement.getAnnotation(Observes.class);
+            annotationValueBuilder.member("declaringType", new AnnotationClassValue<>(methodElement.getDeclaringType().getName()));
             annotationValueBuilder.member("eventArgumentIndex", Arrays.asList(methodElement.getParameters()).indexOf(parameterElement));
             annotationValueBuilder.member("staticMethod", methodElement.isStatic());
             observesAnnotation.enumValue("notifyObserver", Reception.class).ifPresent(reception -> {

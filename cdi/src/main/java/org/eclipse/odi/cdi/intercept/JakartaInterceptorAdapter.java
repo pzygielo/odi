@@ -36,6 +36,7 @@ import jakarta.enterprise.inject.spi.Interceptor;
 import jakarta.interceptor.AroundInvoke;
 import org.eclipse.odi.cdi.AnnotationUtils;
 import org.eclipse.odi.cdi.OdiBeanImpl;
+import org.eclipse.odi.cdi.annotation.DisposerMethod;
 
 import java.lang.annotation.Annotation;
 import java.util.Collections;
@@ -182,7 +183,8 @@ public final class JakartaInterceptorAdapter<B> extends OdiBeanImpl<B> implement
         if (context.hasAnnotation(AroundInvoke.class)) {
             return context.proceed();
         }
-        final ExecutableMethod<B, Object>[] executableMethods = selectMethod(context.getKind());
+        InterceptorKind interceptorKind = selectMethodKind(context);
+        final ExecutableMethod<B, Object>[] executableMethods = selectMethod(interceptorKind);
 
         if (executableMethods == null) {
             return context.proceed();
@@ -192,7 +194,7 @@ public final class JakartaInterceptorAdapter<B> extends OdiBeanImpl<B> implement
                 this,
                 context,
                 executableMethods,
-                context.getKind()
+                interceptorKind
         );
         B target = resolveInterceptorBean(context);
 
@@ -207,6 +209,13 @@ public final class JakartaInterceptorAdapter<B> extends OdiBeanImpl<B> implement
                 forgetInterceptorBean(context.getTarget());
             }
         }
+    }
+
+    private InterceptorKind selectMethodKind(MethodInvocationContext<Object, Object> context) {
+        if (context.getKind() == InterceptorKind.PRE_DESTROY && context.hasAnnotation(DisposerMethod.class)) {
+            return InterceptorKind.AROUND;
+        }
+        return context.getKind();
     }
 
     @Override

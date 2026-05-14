@@ -25,6 +25,7 @@ import io.micronaut.context.annotation.Primary;
 import io.micronaut.core.beans.BeanConstructor;
 import io.micronaut.core.type.Executable;
 import jakarta.inject.Singleton;
+import org.eclipse.odi.cdi.annotation.DisposerMethod;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -49,7 +50,7 @@ public class CdiInterceptorRegistry implements InterceptorRegistry {
                                                        Collection<BeanRegistration<Interceptor<T, ?>>> interceptors,
                                                        InterceptorKind interceptorKind) {
         Interceptor<T, ?>[] resolvedInterceptors = defaultInterceptorRegistry.resolveInterceptors(method, interceptors, interceptorKind);
-        resolvedInterceptors = selectInterceptorsForKind(resolvedInterceptors, interceptorKind);
+        resolvedInterceptors = selectInterceptorsForKind(method, resolvedInterceptors, interceptorKind);
         sortInterceptors(resolvedInterceptors);
         return resolvedInterceptors;
     }
@@ -62,12 +63,14 @@ public class CdiInterceptorRegistry implements InterceptorRegistry {
         return resolvedInterceptors;
     }
 
-    private <I extends Interceptor<?, ?>> I[] selectInterceptorsForKind(I[] interceptors,
+    private <I extends Interceptor<?, ?>> I[] selectInterceptorsForKind(Executable<?, ?> method,
+                                                                        I[] interceptors,
                                                                         InterceptorKind interceptorKind) {
         List<I> selected = new ArrayList<>(interceptors.length);
         for (I interceptor : interceptors) {
             if (!(interceptor instanceof JakartaInterceptorAdapter<?> jakartaInterceptorAdapter)
-                    || jakartaInterceptorAdapter.intercepts(interceptorKind)) {
+                    || jakartaInterceptorAdapter.intercepts(interceptorKind)
+                    || (method != null && isDisposerAroundInvoke(method, interceptorKind, jakartaInterceptorAdapter))) {
                 selected.add(interceptor);
             }
         }
@@ -75,6 +78,19 @@ public class CdiInterceptorRegistry implements InterceptorRegistry {
             return interceptors;
         }
         return selected.toArray(Arrays.copyOf(interceptors, selected.size()));
+    }
+
+    private <I extends Interceptor<?, ?>> I[] selectInterceptorsForKind(I[] interceptors,
+                                                                        InterceptorKind interceptorKind) {
+        return selectInterceptorsForKind(null, interceptors, interceptorKind);
+    }
+
+    private boolean isDisposerAroundInvoke(Executable<?, ?> method,
+                                           InterceptorKind interceptorKind,
+                                           JakartaInterceptorAdapter<?> jakartaInterceptorAdapter) {
+        return interceptorKind == InterceptorKind.PRE_DESTROY
+                && method.getAnnotationMetadata().hasAnnotation(DisposerMethod.class)
+                && jakartaInterceptorAdapter.intercepts(InterceptorKind.AROUND);
     }
 
     private void sortInterceptors(Interceptor<?, ?>[] resolvedInterceptors) {

@@ -30,6 +30,7 @@ import org.junit.jupiter.api.Test;
 import java.lang.annotation.Documented;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
+import java.util.List;
 
 @OdiTest
 public class GenericEventsTest {
@@ -98,6 +99,24 @@ public class GenericEventsTest {
         Assertions.assertTrue(loginService.isAbstractInEventTriggered());
     }
 
+    @Test
+    void testInheritedParameterizedObserver(Event<ParameterizedBar<List<Integer>>> event,
+                                            IntegerListParameterizedObserver integerObserver,
+                                            StringListParameterizedObserver stringObserver) {
+        integerObserver.reset();
+        stringObserver.reset();
+
+        event.fire(new ParameterizedBar<>());
+
+        Assertions.assertTrue(integerObserver.isFooableObserved());
+        Assertions.assertTrue(integerObserver.isFooObserved());
+        Assertions.assertTrue(integerObserver.isBarObserved());
+
+        Assertions.assertFalse(stringObserver.isFooableObserved());
+        Assertions.assertFalse(stringObserver.isFooObserved());
+        Assertions.assertFalse(stringObserver.isBarObserved());
+    }
+
 }
 
 @ApplicationScoped
@@ -152,3 +171,56 @@ class LoggedInData {
 
 }
 
+interface ParameterizedFooable<F> {
+}
+
+class ParameterizedFoo<F> implements ParameterizedFooable<F> {
+}
+
+class ParameterizedBar<B> extends ParameterizedFoo<B> {
+}
+
+abstract class AbstractParameterizedObserver<T> {
+
+    private boolean fooableObserved;
+    private boolean fooObserved;
+    private boolean barObserved;
+
+    void observeFooable(@Observes ParameterizedFooable<T> event) {
+        fooableObserved = true;
+    }
+
+    void observeFoo(@Observes ParameterizedFoo<T> event) {
+        fooObserved = true;
+    }
+
+    void observeBar(@Observes ParameterizedBar<T> event) {
+        barObserved = true;
+    }
+
+    boolean isFooableObserved() {
+        return fooableObserved;
+    }
+
+    boolean isFooObserved() {
+        return fooObserved;
+    }
+
+    boolean isBarObserved() {
+        return barObserved;
+    }
+
+    void reset() {
+        fooableObserved = false;
+        fooObserved = false;
+        barObserved = false;
+    }
+}
+
+@ApplicationScoped
+class IntegerListParameterizedObserver extends AbstractParameterizedObserver<List<Integer>> {
+}
+
+@ApplicationScoped
+class StringListParameterizedObserver extends AbstractParameterizedObserver<List<String>> {
+}

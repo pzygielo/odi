@@ -269,6 +269,13 @@ public final class OdiTypeUtils {
         return resolveSuperType(rawType, superType, eventType, substitutions);
     }
 
+    public static Type resolveTypeVariables(Type type, Map<String, Type> substitutions) {
+        if (substitutions.isEmpty()) {
+            return type;
+        }
+        return substituteTypeVariablesByName(type, substitutions);
+    }
+
     public static boolean isEventAssignable(Type observedType, Type eventType) {
         if (isSameType(observedType, eventType)) {
             return true;
@@ -759,6 +766,57 @@ public final class OdiTypeUtils {
             return ((Argument<?>) type).getName();
         }
         return null;
+    }
+
+    private static Type substituteTypeVariablesByName(Type type, Map<String, Type> substitutions) {
+        if (type instanceof TypeVariable<?>) {
+            Type replacement = substitutions.get(((TypeVariable<?>) type).getName());
+            return replacement == null || replacement == type ? type : substituteTypeVariablesByName(replacement, substitutions);
+        }
+        if (type instanceof ParameterizedType) {
+            ParameterizedType parameterizedType = (ParameterizedType) type;
+            Class<?> rawType = rawType(parameterizedType);
+            if (rawType == null) {
+                return type;
+            }
+            Type[] arguments = parameterizedType.getActualTypeArguments();
+            Type[] substitutedArguments = new Type[arguments.length];
+            boolean changed = false;
+            for (int i = 0; i < arguments.length; i++) {
+                substitutedArguments[i] = substituteTypeVariablesByName(arguments[i], substitutions);
+                changed |= substitutedArguments[i] != arguments[i];
+            }
+            return changed ? new OdiParameterizedType(rawType, substitutedArguments) : type;
+        }
+        if (type instanceof WildcardType) {
+            WildcardType wildcardType = (WildcardType) type;
+            Type[] upperBounds = wildcardType.getUpperBounds();
+            Type[] lowerBounds = wildcardType.getLowerBounds();
+            boolean changed = false;
+            for (int i = 0; i < upperBounds.length; i++) {
+                Type substituted = substituteTypeVariablesByName(upperBounds[i], substitutions);
+                changed |= substituted != upperBounds[i];
+                upperBounds[i] = substituted;
+            }
+            for (int i = 0; i < lowerBounds.length; i++) {
+                Type substituted = substituteTypeVariablesByName(lowerBounds[i], substitutions);
+                changed |= substituted != lowerBounds[i];
+                lowerBounds[i] = substituted;
+            }
+            return changed ? new OdiWildcardType(upperBounds, lowerBounds) : type;
+        }
+        if (type instanceof GenericArrayType) {
+            Type componentType = ((GenericArrayType) type).getGenericComponentType();
+            Type substitutedComponentType = substituteTypeVariablesByName(componentType, substitutions);
+            if (substitutedComponentType == componentType) {
+                return type;
+            }
+            if (substitutedComponentType instanceof Class<?>) {
+                return Array.newInstance((Class<?>) substitutedComponentType, 0).getClass();
+            }
+            return new OdiGenericArrayType(substitutedComponentType);
+        }
+        return type;
     }
 
     private static boolean isPrimitiveOrWrapper(Class<?> type) {

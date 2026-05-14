@@ -57,9 +57,11 @@ public class DisposesMethodVisitor extends ParameterAnnotationInjectableMethodVi
 
         // Skip validating for beans with qualifiers
         if (!parameterElement.hasDeclaredStereotype(io.micronaut.core.annotation.AnnotationUtil.QUALIFIER)) {
-            if (validateMatchingProduces(methodElement, context, disposedType)) {
+            Optional<MethodElement> producerMethod = validateMatchingProduces(methodElement, context, disposedType);
+            if (producerMethod.isEmpty()) {
                 return;
             }
+            producerMethod.get().annotate(AnnotationUtil.ANN_DISPOSER_METHOD);
         }
 
         this.disposerMethods.add(methodElement);
@@ -69,7 +71,7 @@ public class DisposesMethodVisitor extends ParameterAnnotationInjectableMethodVi
         }
     }
 
-    private boolean validateMatchingProduces(MethodElement element, VisitorContext context, ClassElement disposedType) {
+    private Optional<MethodElement> validateMatchingProduces(MethodElement element, VisitorContext context, ClassElement disposedType) {
         if (!disposerMethods.isEmpty()) {
             for (MethodElement disposerMethod : disposerMethods) {
                 final Optional<ParameterElement> disposerParam = Arrays.stream(disposerMethod.getParameters())
@@ -81,7 +83,7 @@ public class DisposesMethodVisitor extends ParameterAnnotationInjectableMethodVi
                                 .map((me) -> me.getDescription(true))
                                 .collect(Collectors.joining(" and "));
                         context.fail("Only a single @Disposes method is permitted, found: " + methodDesc, element);
-                        return true;
+                        return Optional.empty();
                     }
                 }
             }
@@ -102,6 +104,6 @@ public class DisposesMethodVisitor extends ParameterAnnotationInjectableMethodVi
                             + "parameter. See " + CdiUtil.SPEC_LOCATION + "#disposer_method_resolution",
                     element);
         }
-        return false;
+        return producerMethod;
     }
 }

@@ -15,6 +15,7 @@
  */
 package org.eclipse.odi.cdi;
 
+import io.micronaut.aop.InterceptedProxy;
 import io.micronaut.context.BeanProvider;
 import io.micronaut.context.Qualifier;
 import io.micronaut.context.annotation.Any;
@@ -95,7 +96,7 @@ final class DisposerMethodProcessor implements ExecutableMethodProcessor<Dispose
                 Optional<Class<?>> disposeDeclaringType = disposerDef.definition.getDeclaringType();
                 if (disposeDeclaringType.isPresent()
                         && producedDeclaringType.isPresent()
-                        && !producedDeclaringType.get().equals(disposeDeclaringType.get())) {
+                        && isDifferentDeclaringType(producedDeclaringType.get(), disposeDeclaringType.get())) {
                     return bean;
                 }
                 beanContainer.get().fulfillAndExecuteMethod(disposerDef.definition, disposerDef.executableMethod, argument -> {
@@ -111,6 +112,18 @@ final class DisposerMethodProcessor implements ExecutableMethodProcessor<Dispose
             }
         }
         return bean;
+    }
+
+    private boolean isDifferentDeclaringType(Class<?> producedDeclaringType, Class<?> disposeDeclaringType) {
+        if (producedDeclaringType.equals(disposeDeclaringType)) {
+            return false;
+        }
+        if (InterceptedProxy.class.isAssignableFrom(disposeDeclaringType)
+                && producedDeclaringType.isAssignableFrom(disposeDeclaringType)) {
+            return false;
+        }
+        return !InterceptedProxy.class.isAssignableFrom(producedDeclaringType)
+                || !disposeDeclaringType.isAssignableFrom(producedDeclaringType);
     }
 
     private static final class DisposerKey {

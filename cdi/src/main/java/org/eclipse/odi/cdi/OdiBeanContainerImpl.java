@@ -15,6 +15,7 @@
  */
 package org.eclipse.odi.cdi;
 
+import io.micronaut.aop.InterceptedProxy;
 import io.micronaut.context.ApplicationContext;
 import io.micronaut.context.BeanContext;
 import io.micronaut.context.BeanRegistration;
@@ -22,6 +23,7 @@ import io.micronaut.context.BeanResolutionContext;
 import io.micronaut.context.DefaultBeanResolutionContext;
 import io.micronaut.context.Qualifier;
 import io.micronaut.core.annotation.AnnotationMetadata;
+import io.micronaut.core.annotation.AnnotationMetadataProvider;
 import io.micronaut.core.annotation.AnnotationUtil;
 import io.micronaut.core.annotation.AnnotationValue;
 import io.micronaut.core.annotation.Order;
@@ -50,6 +52,7 @@ import jakarta.enterprise.inject.spi.ObserverMethod;
 import jakarta.enterprise.inject.spi.Prioritized;
 import jakarta.inject.Named;
 import jakarta.inject.Singleton;
+import org.eclipse.odi.cdi.annotation.ObservesMethod;
 import org.eclipse.odi.cdi.annotation.reflect.AnnotationReflection;
 import org.eclipse.odi.cdi.context.DependentContext;
 import org.eclipse.odi.cdi.context.SingletonContext;
@@ -70,12 +73,15 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 final class OdiBeanContainerImpl implements OdiBeanContainer {
+    private static final String JAKARTA_INTERCEPTOR_BINDING = "jakarta.interceptor.InterceptorBinding";
+    private static final String MICRONAUT_INTERCEPTOR_BINDING = "io.micronaut.aop.InterceptorBinding";
 
     private final ApplicationContext applicationContext;
     private final OdiSeContainer container;
@@ -134,16 +140,75 @@ final class OdiBeanContainerImpl implements OdiBeanContainer {
                     }
                 }
             }
-            B beanInstance = null;
-            if (!staticMethod) {
-                OdiBean<B> bean = getBean(beanDefinition);
-                CreationalContext<B> creationalContext = createCreationalContext(bean);
-                Context beanContext = odiAnnotations.isDependent(bean.getScope()) ? dependentContext : getContext(bean.getScope());
-                beanInstance = beanContext.get(bean, creationalContext);
+            try {
+                if (!staticMethod) {
+                    OdiBean<B> bean = getBean(beanDefinition);
+                    Optional<MethodInvocation<B, R>> proxyInvocation = findProxyMethodInvocation(bean, executableMethod, dependentContext);
+                    if (proxyInvocation.isPresent()) {
+                        return proxyInvocation.get().invoke(values);
+                    }
+                    CreationalContext<B> creationalContext = createCreationalContext(bean);
+                    Context beanContext = odiAnnotations.isDependent(bean.getScope()) ? dependentContext : getContext(bean.getScope());
+                    B beanInstance = beanContext.get(bean, creationalContext);
+                    return executableMethod.invoke(beanInstance, values);
+                }
+                return executableMethod.invoke(null, values);
+            } finally {
+                dependentContext.destroy();
             }
-            Object result = executableMethod.invoke(beanInstance, values);
-            dependentContext.destroy();
-            return result;
+        }
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private <B, R> Optional<MethodInvocation<B, R>> findProxyMethodInvocation(OdiBean<B> bean,
+                                                                              ExecutableMethod<B, R> executableMethod,
+                                                                              DependentContext dependentContext) {
+        BeanDefinition<B> beanDefinition = bean.getBeanDefinition();
+        Optional<BeanDefinition<B>> proxyBeanDefinition = applicationContext.findProxyBeanDefinition(beanDefinition.asArgument(), beanDefinition.getDeclaredQualifier());
+        return proxyBeanDefinition
+                .map(proxyDefinition -> {
+                    OdiBean<B> proxyOdiBean = getBean(proxyDefinition);
+                    CreationalContext<B> proxyCreationalContext = createCreationalContext(proxyOdiBean);
+                    Context proxyContext = odiAnnotations.isDependent(proxyOdiBean.getScope()) ? dependentContext : getContext(proxyOdiBean.getScope());
+                    B proxyBean = proxyContext.get(proxyOdiBean, proxyCreationalContext);
+                    Optional<ExecutableMethod<B, R>> proxyMethod = (Optional) proxyDefinition.findMethod(
+                            executableMethod.getMethodName(),
+                            executableMethod.getArgumentTypes()
+                    );
+                    if (shouldInvokeObserverOnProxyTarget(beanDefinition, proxyDefinition, executableMethod)
+                            && proxyBean instanceof InterceptedProxy<?> interceptedProxy) {
+                        return new MethodInvocation<>((B) interceptedProxy.interceptedTarget(), executableMethod);
+                    }
+                    return new MethodInvocation<>(proxyBean, proxyMethod.orElse(executableMethod));
+                });
+    }
+
+    private boolean shouldInvokeObserverOnProxyTarget(BeanDefinition<?> beanDefinition,
+                                                      BeanDefinition<?> proxyDefinition,
+                                                      ExecutableMethod<?, ?> executableMethod) {
+        return executableMethod.hasAnnotation(ObservesMethod.class)
+                && !hasCdiInterceptorBinding(beanDefinition)
+                && !hasCdiInterceptorBinding(proxyDefinition)
+                && !hasCdiInterceptorBinding(executableMethod);
+    }
+
+    private boolean hasCdiInterceptorBinding(AnnotationMetadataProvider metadataProvider) {
+        AnnotationMetadata annotationMetadata = metadataProvider.getAnnotationMetadata();
+        return hasCdiInterceptorBinding(annotationMetadata, JAKARTA_INTERCEPTOR_BINDING)
+                || hasCdiInterceptorBinding(annotationMetadata, MICRONAUT_INTERCEPTOR_BINDING);
+    }
+
+    private boolean hasCdiInterceptorBinding(AnnotationMetadata annotationMetadata, String stereotype) {
+        return annotationMetadata
+                .getAnnotationNamesByStereotype(stereotype)
+                .stream()
+                .anyMatch(annotationName -> !JAKARTA_INTERCEPTOR_BINDING.equals(annotationName)
+                        && !MICRONAUT_INTERCEPTOR_BINDING.equals(annotationName));
+    }
+
+    private record MethodInvocation<B, R>(B bean, ExecutableMethod<B, R> executableMethod) {
+        Object invoke(Object[] values) {
+            return executableMethod.invoke(bean, values);
         }
     }
 

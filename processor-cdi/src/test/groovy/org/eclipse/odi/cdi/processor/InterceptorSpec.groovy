@@ -19,6 +19,9 @@ package org.eclipse.odi.cdi.processor
 import org.eclipse.odi.cdi.intercept.JakartaInterceptorAdapter
 import io.micronaut.annotation.processing.test.AbstractTypeElementSpec
 import io.micronaut.aop.Intercepted
+import io.micronaut.aop.Around
+import io.micronaut.core.type.Argument
+import org.eclipse.odi.cdi.annotation.DisposerMethod
 
 class InterceptorSpec extends AbstractTypeElementSpec {
 
@@ -301,5 +304,68 @@ class MonitoringInterceptor {
 @Retention(RUNTIME)
 @interface Monitored {}
 ''')
+    }
+
+    void 'test disposer method on normal scoped intercepted bean is available on proxy definition'() {
+        given:
+        def context = buildContext('''
+package intertest;
+
+import jakarta.enterprise.context.RequestScoped;
+import jakarta.enterprise.inject.Disposes;
+import jakarta.enterprise.inject.Produces;
+import jakarta.interceptor.*;
+import java.lang.annotation.*;
+import static java.lang.annotation.ElementType.*;
+import static java.lang.annotation.RetentionPolicy.*;
+
+@RequestScoped
+@Monitored
+class WheatProducer {
+    @Produces
+    public Wheat createWheat() {
+        return new Wheat();
+    }
+
+    public void destroyWheat(@Disposes Wheat wheat) {
+    }
+}
+
+class Wheat {
+}
+
+@Monitored
+@Interceptor
+class MonitoringInterceptor {
+    @AroundInvoke
+    public Object monitorInvocation(InvocationContext ctx) throws Exception {
+        return ctx.proceed();
+    }
+}
+
+@Inherited
+@InterceptorBinding
+@Target({TYPE, METHOD})
+@Retention(RUNTIME)
+@interface Monitored {}
+''')
+        def producerType = context.classLoader.loadClass('intertest.WheatProducer')
+        def wheatType = context.classLoader.loadClass('intertest.Wheat')
+
+        when:
+        def proxyDefinition = context.findProxyBeanDefinition(Argument.of(producerType), null)
+        def targetDefinition = context.findProxyTargetBeanDefinition(Argument.of(producerType), null)
+        def producedDefinition = context.getBeanDefinitions(Argument.of(wheatType)).find {
+            it.declaringType.orElse(null) == producerType
+        }
+
+        then:
+        proxyDefinition.present
+        targetDefinition.present
+        producedDefinition != null
+        producedDefinition.hasAnnotation(DisposerMethod)
+        proxyDefinition.get().findMethod('destroyWheat', wheatType).present
+        targetDefinition.get().findMethod('destroyWheat', wheatType).present
+        targetDefinition.get().findMethod('destroyWheat', wheatType).get().hasAnnotation(Around)
     }
 }

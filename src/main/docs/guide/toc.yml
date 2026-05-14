@@ -1,6 +1,7 @@
 introduction: Introduction
 setup: Setup
 quickStart: Quick Start
+buildTimeExtensions: Build-Time Extensions
 cdiLite: CDI Lite Support
 implementationNotes: Implementation Notes
 releaseHistory: Release History

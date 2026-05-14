@@ -1,0 +1,82 @@
+CDI build-compatible extensions run during annotation processing. Make the extension artifact discoverable from `META-INF/services/jakarta.enterprise.inject.build.compatible.spi.BuildCompatibleExtension` on the annotation processor path. If application code also uses annotations, synthetic bean creators, or runtime types from the extension artifact, keep that artifact on the application classpath too.
+
+Gradle:
+
+[source,groovy]
+----
+dependencies {
+    annotationProcessor("org.eclipse.odi:micronaut-odi-processor-cdi:<version>")
+    annotationProcessor("com.example:payment-cdi-extension:<version>")
+
+    implementation("org.eclipse.odi:micronaut-odi-cdi:<version>")
+    implementation("com.example:payment-cdi-extension:<version>")
+    implementation("jakarta.enterprise:jakarta.enterprise.cdi-api:4.1.0")
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs.add("-Amicronaut.cdi.build.compatible.extensions=true")
+}
+----
+
+Maven:
+
+[source,xml]
+----
+<dependencies>
+    <dependency>
+        <groupId>org.eclipse.odi</groupId>
+        <artifactId>micronaut-odi-cdi</artifactId>
+        <version>${odi.version}</version>
+    </dependency>
+    <dependency>
+        <groupId>com.example</groupId>
+        <artifactId>payment-cdi-extension</artifactId>
+        <version>${payment.extension.version}</version>
+    </dependency>
+</dependencies>
+
+<build>
+    <plugins>
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-compiler-plugin</artifactId>
+            <configuration>
+                <annotationProcessorPaths>
+                    <path>
+                        <groupId>org.eclipse.odi</groupId>
+                        <artifactId>micronaut-odi-processor-cdi</artifactId>
+                        <version>${odi.version}</version>
+                    </path>
+                    <path>
+                        <groupId>com.example</groupId>
+                        <artifactId>payment-cdi-extension</artifactId>
+                        <version>${payment.extension.version}</version>
+                    </path>
+                </annotationProcessorPaths>
+                <compilerArgs>
+                    <arg>-Amicronaut.cdi.build.compatible.extensions=true</arg>
+                </compilerArgs>
+            </configuration>
+        </plugin>
+    </plugins>
+</build>
+----
+
+The Java docs example keeps the extension in a separate Gradle module. The extension module contributes a marker annotation and a synthetic runtime bean:
+
+snippet::org.eclipse.odi.docs.cdi.extension.PaymentGateway,org.eclipse.odi.docs.cdi.extension.PaymentCatalog[project=docs-examples/cdi-lite-build-extension,source=main]
+
+The service descriptor contains the extension implementation class:
+
+[source]
+----
+org.eclipse.odi.docs.cdi.extension.PaymentBuildExtension
+----
+
+The extension registers the marker annotation as a CDI qualifier during discovery, collects annotated payment gateway beans during registration, and synthesizes a `PaymentCatalog` bean:
+
+snippet::org.eclipse.odi.docs.cdi.extension.PaymentBuildExtension[project=docs-examples/cdi-lite-build-extension,source=main]
+
+Application code can then use the extension-defined qualifier and inject the synthetic bean:
+
+snippet::org.eclipse.odi.docs.cdi.CreditCardProcessor,org.eclipse.odi.docs.cdi.GatewayCatalogService[project=docs-examples/cdi-lite-java,source=main]

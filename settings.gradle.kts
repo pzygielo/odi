@@ -142,6 +142,7 @@ include(":odi-test-junit5")
 include(":tck-runner")
 include(":odi-cdi")
 include(":odi-processor-mp")
+include(":docs-examples:cdi-lite-build-extension")
 include(":docs-examples:cdi-lite-java")
 
 project(":odi-core").projectDir = file("core")

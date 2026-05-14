@@ -3,7 +3,10 @@ package org.eclipse.odi.docs.cdi;
 import jakarta.enterprise.inject.se.SeContainer;
 import jakarta.enterprise.inject.se.SeContainerInitializer;
 import jakarta.enterprise.inject.spi.CDI;
+import org.eclipse.odi.docs.cdi.extension.PaymentCatalog;
 import org.junit.jupiter.api.Test;
+
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -29,6 +32,18 @@ class CheckoutApplicationTest {
     void currentCdiBeanContainerIsAvailable() {
         try (SeContainer ignored = SeContainerInitializer.newInstance().initialize()) {
             assertNotNull(CDI.current().getBeanContainer());
+        }
+    }
+
+    @Test
+    void buildCompatibleExtensionRegistersQualifierAndSyntheticBean() {
+        try (SeContainer container = SeContainerInitializer.newInstance().initialize()) {
+            GatewayCatalogService gatewayCatalogService = container.select(GatewayCatalogService.class).get();
+            PaymentCatalog paymentCatalog = container.select(PaymentCatalog.class).get();
+
+            assertEquals(Set.of("credit-card"), gatewayCatalogService.gateways());
+            assertEquals(Set.of("credit-card"), paymentCatalog.gateways());
+            assertEquals("cc-acct-200", gatewayCatalogService.chargeReference("acct-200", 1299));
         }
     }
 

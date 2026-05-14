@@ -1,5 +1,7 @@
 Add the CDI processor to the annotation processor path and keep the CDI runtime on the application classpath.
 
+Build-compatible extension artifacts are compile-time inputs. Add extension libraries to the annotation processor path, and also to the implementation/runtime classpath when the application uses extension-provided annotations, creators, or runtime types.
+
 Gradle:
 
 [source,groovy]

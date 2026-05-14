@@ -7,9 +7,18 @@ import jakarta.inject.Named;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * Produces shared payment resources and observes approved-payment events.
+ */
 @ApplicationScoped
 public class PaymentResources {
     private final AtomicInteger approvedPayments = new AtomicInteger();
+
+    /**
+     * Creates payment resources for the example.
+     */
+    public PaymentResources() {
+    }
 
     @Produces
     @Named("currency")
@@ -21,6 +30,11 @@ public class PaymentResources {
         approvedPayments.incrementAndGet();
     }
 
+    /**
+     * Returns how many payment approval events this bean observed.
+     *
+     * @return number of observed payment approvals
+     */
     public int approvedPayments() {
         return approvedPayments.get();
     }

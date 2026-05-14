@@ -59,6 +59,7 @@ nb-configuration.xml
 # Gradle
 .gradle/
 build/
+checkouts/
 
 # Other
 *~

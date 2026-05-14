@@ -96,11 +96,11 @@ fun ConfigurableIncludedBuild.substituteMicronautCore() {
 
 val includeMicronautCore = booleanGradleProperty("odi.include.micronaut.core") ?: true
 if (includeMicronautCore) {
-    val localMicronautCore = providers.gradleProperty("local.git.odi.micronaut-core").orNull
-        ?: providers.environmentVariable("LOCAL_GIT_MICRONAUT_CORE").orNull
-        ?: "/Users/graemerocher/dev/micronaut/core.cdi"
-    val localMicronautCoreDir = file(localMicronautCore)
-    if (localMicronautCoreDir.isDirectory && localMicronautCoreDir.resolve(".git").exists()) {
+    val localMicronautCore = (providers.gradleProperty("local.git.odi.micronaut-core").orNull
+        ?: providers.environmentVariable("LOCAL_GIT_MICRONAUT_CORE").orNull)
+        ?.takeIf { it.isNotBlank() }
+    val localMicronautCoreDir = localMicronautCore?.let(::file)
+    if (localMicronautCoreDir?.isDirectory == true && localMicronautCoreDir.resolve(".git").exists()) {
         includeBuild(localMicronautCoreDir) {
             name = "micronaut-core"
             substituteMicronautCore()
@@ -109,7 +109,7 @@ if (includeMicronautCore) {
         gitRepositories {
             include("micronaut-core-cdi") {
                 uri.set("https://github.com/micronaut-projects/micronaut-core.git")
-                branch.set("5.1.x")
+                branch.set("cdi-5.1.x")
                 includeBuild {
                     name = "micronaut-core"
                     substituteMicronautCore()

@@ -1,0 +1,5 @@
+ODI focuses on CDI Lite. The supported programming model includes bean-defining annotations, constructor and field injection, qualifiers, producer methods and fields, disposers, observer methods, events, interceptors, `Instance<T>` lookup, the CDI SE bootstrap API, and build-compatible extensions.
+
+CDI Full features that depend on runtime extension processing or container services are not part of the target runtime surface. That includes portable runtime extensions, decorators, passivation, and APIs that require a full `BeanManager` implementation.
+
+The CDI Lite TCK runner is configured to exclude CDI Full coverage while exercising the CDI Lite behavior implemented by ODI.

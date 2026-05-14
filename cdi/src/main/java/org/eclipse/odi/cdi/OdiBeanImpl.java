@@ -26,6 +26,7 @@ import io.micronaut.core.annotation.AnnotationUtil;
 import io.micronaut.core.annotation.Internal;
 import io.micronaut.core.annotation.Order;
 import io.micronaut.core.naming.NameUtils;
+import io.micronaut.core.order.Ordered;
 import io.micronaut.core.type.Argument;
 import io.micronaut.inject.AdvisedBeanType;
 import io.micronaut.inject.BeanDefinition;
@@ -470,6 +471,9 @@ public class OdiBeanImpl<T> implements OdiBean<T>, Prioritized {
         }
         final int i = definition.intValue(Order.class).orElse(0);
         if (i != 0) {
+            if (i == Ordered.HIGHEST_PRECEDENCE) {
+                return Integer.MAX_VALUE;
+            }
             return -i;
         }
         return 0;

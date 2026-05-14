@@ -34,8 +34,7 @@ public class DeclareInjectedFieldTest {
     @Test
     @DisplayName("3.6.1. Declaring an injected field")
     void testDeclareInjectedField(Order order) {
-        Assertions.assertNotNull(order.product);
-        Assertions.assertNotNull(order.customer);
+        Assertions.assertTrue(order.isInjected());
     }
 }
 
@@ -45,6 +44,10 @@ class Order {
     @Inject
     @Selected Product product;
     @Inject User customer;
+
+    boolean isInjected() {
+        return product != null && customer != null;
+    }
 
 }
 

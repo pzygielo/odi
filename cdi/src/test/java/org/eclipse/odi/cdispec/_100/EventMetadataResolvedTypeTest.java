@@ -42,7 +42,7 @@ public class EventMetadataResolvedTypeTest {
         Assertions.assertEquals(
                 new TypeLiteral<ArrayList<ParameterizedEventPayload<Number>>>() {
                 }.getType(),
-                observer.metadata.getType()
+                observer.getMetadata().getType()
         );
     }
 }
@@ -66,6 +66,10 @@ class ParameterizedEventObserver {
 
     void observe(@Observes List<ParameterizedEventPayload<?>> event, EventMetadata metadata) {
         this.metadata = metadata;
+    }
+
+    EventMetadata getMetadata() {
+        return metadata;
     }
 }
 

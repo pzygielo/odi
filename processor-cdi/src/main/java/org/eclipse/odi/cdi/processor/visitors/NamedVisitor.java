@@ -66,7 +66,7 @@ public class NamedVisitor implements TypeElementVisitor<Object, Object> {
             final List<String> stereotypes = element.getAnnotationNamesByStereotype(Stereotype.class);
 
             // if @Named is inherited via a stereotype
-            if (!element.hasAnnotation(AnnotationUtil.ANN_NAME)) {
+            if (!element.hasDeclaredAnnotation(AnnotationUtil.ANN_NAME)) {
                 final List<String> namedStereotypes = element.getAnnotationNamesByStereotype(AnnotationUtil.ANN_NAME);
                 if (stereotypes.containsAll(namedStereotypes)) {
                     if (element.stringValue(AnnotationUtil.ANN_NAME).isPresent()) {
@@ -104,8 +104,12 @@ public class NamedVisitor implements TypeElementVisitor<Object, Object> {
     }
 
     private static void applyCdiDefaultName(Element element) {
-        if (isNamedByStereotype(element)) {
+        boolean namedByStereotype = isNamedByStereotype(element);
+        if (namedByStereotype) {
             element.annotate(AnnotationUtil.ANN_NAMED_BY_STEREOTYPE);
+            if (element.stringValue(AnnotationUtil.ANN_NAME).isEmpty() && isBeanNamingElement(element)) {
+                element.annotate(AnnotationUtil.ANN_NAME, builder -> builder.value(cdiDefaultBeanName(element)));
+            }
         }
         if (element.hasDeclaredAnnotation(AnnotationUtil.ANN_NAME)
                 && element.stringValue(AnnotationUtil.ANN_NAME).isEmpty()
@@ -115,7 +119,7 @@ public class NamedVisitor implements TypeElementVisitor<Object, Object> {
     }
 
     private static boolean isNamedByStereotype(Element element) {
-        if (element.hasAnnotation(AnnotationUtil.ANN_NAME)) {
+        if (element.hasDeclaredAnnotation(AnnotationUtil.ANN_NAME)) {
             return false;
         }
         List<String> stereotypes = element.getAnnotationNamesByStereotype(Stereotype.class);

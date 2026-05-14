@@ -218,6 +218,9 @@ final class OdiEvent<T> implements Event<T>, OdiEventMetadata {
 
     private Argument<?> resolveRuntimeArgument(@NonNull Object event) {
         Class<?> runtimeType = event.getClass();
+        if (eventType.getType() == Object.class) {
+            return rawRuntimeArgument(runtimeType);
+        }
         if (runtimeType == eventType.getType()) {
             return eventType;
         }
@@ -230,6 +233,40 @@ final class OdiEvent<T> implements Event<T>, OdiEventMetadata {
             throw new IllegalArgumentException("Type variable in event type");
         }
         return Argument.of(runtimeType, selectedTypeParameters);
+    }
+
+    private static Argument<?> rawRuntimeArgument(Class<?> runtimeType) {
+        if (runtimeType.isAnonymousClass()) {
+            Argument<?> rawSuperArgument = rawGenericSuperclassArgument(runtimeType);
+            if (rawSuperArgument != null) {
+                return rawSuperArgument;
+            }
+        }
+        return rawArgument(runtimeType);
+    }
+
+    @Nullable
+    private static Argument<?> rawGenericSuperclassArgument(Class<?> runtimeType) {
+        Type genericSuperclass = runtimeType.getGenericSuperclass();
+        if (genericSuperclass instanceof ParameterizedType) {
+            Type rawType = ((ParameterizedType) genericSuperclass).getRawType();
+            if (rawType instanceof Class<?> && rawType != Object.class) {
+                return rawArgument((Class<?>) rawType);
+            }
+        }
+        return null;
+    }
+
+    private static Argument<?> rawArgument(Class<?> type) {
+        TypeVariable<? extends Class<?>>[] typeParameters = type.getTypeParameters();
+        if (typeParameters.length == 0) {
+            return Argument.of(type);
+        }
+        Argument<?>[] arguments = new Argument<?>[typeParameters.length];
+        for (int i = 0; i < typeParameters.length; i++) {
+            arguments[i] = Argument.ofTypeVariable(Object.class, typeParameters[i].getName());
+        }
+        return Argument.of(type, arguments);
     }
 
     private static void validateNoTypeVariables(Type type) {

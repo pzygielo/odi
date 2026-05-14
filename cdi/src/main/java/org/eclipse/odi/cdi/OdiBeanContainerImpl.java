@@ -27,6 +27,7 @@ import io.micronaut.core.annotation.AnnotationMetadataProvider;
 import io.micronaut.core.annotation.AnnotationUtil;
 import io.micronaut.core.annotation.AnnotationValue;
 import io.micronaut.core.annotation.Order;
+import io.micronaut.core.order.Ordered;
 import io.micronaut.core.reflect.ReflectionUtils;
 import io.micronaut.core.type.Argument;
 import io.micronaut.inject.BeanDefinition;
@@ -308,7 +309,13 @@ final class OdiBeanContainerImpl implements OdiBeanContainer {
             return priority.getAsInt();
         }
         int order = beanDefinition.intValue(Order.class).orElse(0);
-        return order == 0 ? 0 : -order;
+        if (order == 0) {
+            return 0;
+        }
+        if (order == Ordered.HIGHEST_PRECEDENCE) {
+            return Integer.MAX_VALUE;
+        }
+        return -order;
     }
 
     @Override

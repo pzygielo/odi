@@ -1,0 +1,5 @@
+ODI is a CDI Lite implementation backed by Micronaut's compile-time dependency injection infrastructure.
+
+The runtime uses CDI APIs while the build uses an annotation processor to generate Micronaut bean definitions and proxy classes. Applications keep the ODI processor on the annotation processor path and run with the ODI CDI runtime plus the Jakarta CDI API.
+
+The implementation targets CDI Lite. CDI Full runtime extension points, decorators, and passivation are intentionally outside the runtime surface.

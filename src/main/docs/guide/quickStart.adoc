@@ -1,0 +1,17 @@
+The Java example in `docs-examples/cdi-lite-java` demonstrates constructor injection, qualifiers, producer methods, programmatic lookup with `Instance<T>`, events, and CDI SE bootstrap.
+
+Define a contract and a qualifier-specific implementation:
+
+snippet::org.eclipse.odi.docs.cdi.PaymentProcessor,org.eclipse.odi.docs.cdi.CreditCard,org.eclipse.odi.docs.cdi.CreditCardProcessor[project=docs-examples/cdi-lite-java,source=main]
+
+Producer methods can supply values used by other beans:
+
+snippet::org.eclipse.odi.docs.cdi.PaymentResources,org.eclipse.odi.docs.cdi.ReceiptFormatter[project=docs-examples/cdi-lite-java,source=main]
+
+Constructor injection, `Instance<T>` lookup, and CDI events work together in a normal application bean:
+
+snippet::org.eclipse.odi.docs.cdi.CheckoutService[project=docs-examples/cdi-lite-java,source=main]
+
+Start CDI SE with `SeContainerInitializer` and resolve the entry-point bean:
+
+snippet::org.eclipse.odi.docs.cdi.CheckoutApplication[project=docs-examples/cdi-lite-java,source=main]

@@ -24,6 +24,7 @@ import io.micronaut.core.annotation.AnnotationValue;
 import io.micronaut.core.annotation.Internal;
 import io.micronaut.core.annotation.Nullable;
 import io.micronaut.inject.annotation.MutableAnnotationMetadata;
+import io.micronaut.inject.annotation.AnnotationMetadataException;
 import io.micronaut.inject.qualifiers.AnyQualifier;
 import io.micronaut.inject.qualifiers.Qualifiers;
 import jakarta.enterprise.inject.Stereotype;
@@ -34,7 +35,11 @@ import jakarta.interceptor.InterceptorBinding;
 import java.lang.annotation.Annotation;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
+import java.lang.reflect.Array;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -211,7 +216,134 @@ public final class AnnotationUtils {
                 annotationValue.getValues(),
                 annotationValue.getRetentionPolicy()
         );
-        return annotationMetadata.synthesize(annotationClass);
+        try {
+            return annotationMetadata.synthesize(annotationClass);
+        } catch (AnnotationMetadataException e) {
+            return proxyAnnotationValue(annotationClass, annotationValue);
+        }
+    }
+
+    private static Annotation proxyAnnotationValue(Class<? extends Annotation> annotationClass,
+                                                   AnnotationValue<?> annotationValue) {
+        Map<CharSequence, Object> values = valuesIncludingDefaults(annotationValue);
+        return (Annotation) Proxy.newProxyInstance(
+                annotationClass.getClassLoader(),
+                new Class<?>[]{annotationClass},
+                (proxy, method, args) -> annotationMethodValue(proxy, annotationClass, values, method, args)
+        );
+    }
+
+    private static Object annotationMethodValue(Object proxy,
+                                                Class<? extends Annotation> annotationClass,
+                                                Map<CharSequence, Object> values,
+                                                Method method,
+                                                Object[] args) throws ReflectiveOperationException {
+        String name = method.getName();
+        if (method.getParameterCount() == 0) {
+            if ("annotationType".equals(name)) {
+                return annotationClass;
+            }
+            if ("toString".equals(name)) {
+                return "@" + annotationClass.getName() + values;
+            }
+            if ("hashCode".equals(name)) {
+                return annotationHashCode(annotationClass, values);
+            }
+            Object value = values.getOrDefault(name, method.getDefaultValue());
+            if (value != null) {
+                return normalizeAnnotationMember(method.getReturnType(), value);
+            }
+        } else if (method.getParameterCount() == 1 && "equals".equals(name)) {
+            return annotationEquals(proxy, annotationClass, values, args[0]);
+        }
+        return method.invoke(proxy, args);
+    }
+
+    private static boolean annotationEquals(Object proxy,
+                                            Class<? extends Annotation> annotationClass,
+                                            Map<CharSequence, Object> values,
+                                            Object other) throws ReflectiveOperationException {
+        if (proxy == other) {
+            return true;
+        }
+        if (!annotationClass.isInstance(other)) {
+            return false;
+        }
+        for (Method member : annotationClass.getDeclaredMethods()) {
+            member.setAccessible(true);
+            Object thisValue = normalizeAnnotationMember(
+                    member.getReturnType(),
+                    values.getOrDefault(member.getName(), member.getDefaultValue())
+            );
+            Object thatValue = member.invoke(other);
+            if (!memberValueEquals(thisValue, thatValue)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static int annotationHashCode(Class<? extends Annotation> annotationClass,
+                                          Map<CharSequence, Object> values) {
+        int result = 0;
+        for (Method member : annotationClass.getDeclaredMethods()) {
+            Object value = normalizeAnnotationMember(
+                    member.getReturnType(),
+                    values.getOrDefault(member.getName(), member.getDefaultValue())
+            );
+            result += (127 * member.getName().hashCode()) ^ memberValueHashCode(value);
+        }
+        return result;
+    }
+
+    private static Object normalizeAnnotationMember(Class<?> returnType, Object value) {
+        if (value == null || returnType.isInstance(value) || !returnType.isArray()) {
+            return value;
+        }
+        Class<?> componentType = returnType.getComponentType();
+        if (componentType.isInstance(value)) {
+            Object array = Array.newInstance(componentType, 1);
+            Array.set(array, 0, value);
+            return array;
+        }
+        return value;
+    }
+
+    private static boolean memberValueEquals(Object left, Object right) {
+        if (left != null && left.getClass().isArray() && right != null && right.getClass().isArray()) {
+            if (left instanceof Object[] && right instanceof Object[]) {
+                return Arrays.equals((Object[]) left, (Object[]) right);
+            }
+            int length = Array.getLength(left);
+            if (length != Array.getLength(right)) {
+                return false;
+            }
+            for (int i = 0; i < length; i++) {
+                if (!java.util.Objects.equals(Array.get(left, i), Array.get(right, i))) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        return java.util.Objects.equals(left, right);
+    }
+
+    private static int memberValueHashCode(Object value) {
+        if (value == null) {
+            return 0;
+        }
+        if (value instanceof Object[]) {
+            return Arrays.hashCode((Object[]) value);
+        }
+        if (!value.getClass().isArray()) {
+            return value.hashCode();
+        }
+        int result = 1;
+        int length = Array.getLength(value);
+        for (int i = 0; i < length; i++) {
+            result = 31 * result + java.util.Objects.hashCode(Array.get(value, i));
+        }
+        return result;
     }
 
     private static boolean hasInterceptorBindingStereotype(AnnotationValue<?> annotationValue, Set<String> visited) {

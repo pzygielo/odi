@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Test;
 import java.lang.annotation.Annotation;
 import java.util.Set;
 
-@Disabled("Pending feature in core: https://github.com/micronaut-projects/micronaut-core/pull/6058")
+@Disabled("BUG: Event InjectionPoint metadata runtime support pending in core: https://github.com/micronaut-projects/micronaut-core/pull/6058")
 @OdiTest
 public class EventInjectionPointTest {
 
@@ -133,4 +133,3 @@ class FieldEvent {
 
 class ConstructorEvent {
 }
-

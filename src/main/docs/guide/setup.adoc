@@ -1,0 +1,49 @@
+Add the CDI processor to the annotation processor path and keep the CDI runtime on the application classpath.
+
+Gradle:
+
+[source,groovy]
+----
+dependencies {
+    annotationProcessor("org.eclipse.odi:micronaut-odi-processor-cdi:<version>")
+
+    implementation("org.eclipse.odi:micronaut-odi-cdi:<version>")
+    implementation("jakarta.enterprise:jakarta.enterprise.cdi-api:4.1.0")
+}
+----
+
+Maven:
+
+[source,xml]
+----
+<dependencies>
+    <dependency>
+        <groupId>org.eclipse.odi</groupId>
+        <artifactId>micronaut-odi-cdi</artifactId>
+        <version>${odi.version}</version>
+    </dependency>
+    <dependency>
+        <groupId>jakarta.enterprise</groupId>
+        <artifactId>jakarta.enterprise.cdi-api</artifactId>
+        <version>4.1.0</version>
+    </dependency>
+</dependencies>
+
+<build>
+    <plugins>
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-compiler-plugin</artifactId>
+            <configuration>
+                <annotationProcessorPaths>
+                    <path>
+                        <groupId>org.eclipse.odi</groupId>
+                        <artifactId>micronaut-odi-processor-cdi</artifactId>
+                        <version>${odi.version}</version>
+                    </path>
+                </annotationProcessorPaths>
+            </configuration>
+        </plugin>
+    </plugins>
+</build>
+----

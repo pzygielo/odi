@@ -35,7 +35,6 @@ import java.lang.annotation.Annotation;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 final class ClassInfoImpl extends DeclarationInfoImpl implements ClassInfo {
@@ -82,14 +81,10 @@ final class ClassInfoImpl extends DeclarationInfoImpl implements ClassInfo {
 
     @Override
     public List<TypeVariable> typeParameters() {
-        final Map<String, ClassElement> typeArguments = classElement.getTypeArguments();
-        if (typeArguments.isEmpty()) {
-            return Collections.emptyList();
-        } else {
-            return typeArguments.values().stream()
-                    .map(v -> TypeFactory.createTypeVariable(v, types, visitorContext))
-                    .collect(Collectors.toUnmodifiableList());
-        }
+        return classElement.getDeclaredGenericPlaceholders()
+                .stream()
+                .map(v -> TypeFactory.createTypeVariable(v, types, visitorContext))
+                .collect(Collectors.toUnmodifiableList());
     }
 
     @Override

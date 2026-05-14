@@ -1,0 +1,7 @@
+ODI delegates bean discovery and dependency injection mechanics to Micronaut's compile-time model.
+
+The CDI annotation processor maps CDI annotations onto Micronaut metadata and emits bean definitions during compilation. At runtime, `micronaut-odi-cdi` adapts the generated definitions to CDI APIs such as `SeContainer`, `CDI`, `BeanContainer`, `Instance<T>`, and event dispatch.
+
+This split keeps the processor out of the runtime classpath. Applications should depend on `micronaut-odi-processor-cdi` only as an annotation processor and use `micronaut-odi-cdi` as the runtime implementation.
+
+Build-compatible extensions run during annotation processing. Generated proxies and supporting metadata are available to the runtime without requiring CDI Full runtime extension discovery.

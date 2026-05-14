@@ -110,8 +110,8 @@ public final class OdiEventFactory {
             public void fire(Object event) {
                 getTypedEvent(
                         annotationMetadata,
-                        Argument.of(event.getClass()),
-                        event.getClass(),
+                        Argument.OBJECT_ARGUMENT,
+                        Object.class,
                         qualifier,
                         injectionPoint)
                 .fire(event);
@@ -122,8 +122,8 @@ public final class OdiEventFactory {
             public <U> CompletionStage<U> fireAsync(U event) {
                 return getTypedEvent(
                         annotationMetadata,
-                        Argument.of(event.getClass()),
-                        event.getClass(),
+                        Argument.OBJECT_ARGUMENT,
+                        Object.class,
                         qualifier,
                         injectionPoint)
                 .fireAsync(event);
@@ -134,8 +134,8 @@ public final class OdiEventFactory {
             public <U> CompletionStage<U> fireAsync(U event, NotificationOptions options) {
                 return getTypedEvent(
                         annotationMetadata,
-                        Argument.of(event.getClass()),
-                        event.getClass(),
+                        Argument.OBJECT_ARGUMENT,
+                        Object.class,
                         qualifier,
                         injectionPoint)
                 .fireAsync(event, options);

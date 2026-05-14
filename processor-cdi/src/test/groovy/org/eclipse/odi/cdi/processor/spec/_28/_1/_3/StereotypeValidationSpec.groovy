@@ -21,7 +21,7 @@ import io.micronaut.annotation.processing.test.AbstractTypeElementSpec
 import org.eclipse.odi.cdi.processor.CdiUtil
 import spock.lang.Narrative
 
-import javax.inject.Named
+import jakarta.inject.Named
 
 @Narrative("CDI Spec - 2.8.1.3. Declaring a @Named stereotype")
 class StereotypeValidationSpec extends AbstractTypeElementSpec {

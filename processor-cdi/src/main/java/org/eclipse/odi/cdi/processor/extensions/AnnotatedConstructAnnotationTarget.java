@@ -20,6 +20,7 @@ import io.micronaut.annotation.processing.visitor.ElementProvider;
 import io.micronaut.core.util.StringUtils;
 import io.micronaut.inject.ast.ClassElement;
 import io.micronaut.inject.ast.Element;
+import io.micronaut.inject.ast.GenericElement;
 import jakarta.enterprise.inject.build.compatible.spi.Types;
 import jakarta.enterprise.lang.model.AnnotationInfo;
 import jakarta.enterprise.lang.model.AnnotationMember;
@@ -71,7 +72,9 @@ final class AnnotatedConstructAnnotationTarget implements AnnotationTarget {
     private List<AnnotationInfo> annotations;
 
     AnnotatedConstructAnnotationTarget(Element element, Types types, JavaVisitorContext visitorContext) {
-        Object nativeType = element.getNativeType();
+        Object nativeType = element instanceof GenericElement
+                ? ((GenericElement) element).getGenericNativeType()
+                : element.getNativeType();
         if (nativeType instanceof ElementProvider) {
             javax.lang.model.element.Element nativeElement = ((ElementProvider) nativeType).element();
             if (nativeElement != null) {

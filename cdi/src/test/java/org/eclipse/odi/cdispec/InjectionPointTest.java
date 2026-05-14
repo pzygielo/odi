@@ -1,14 +1,14 @@
 package org.eclipse.odi.cdispec;
 
 import org.eclipse.odi.test.junit5.OdiTest;
+import jakarta.enterprise.context.Dependent;
 import jakarta.enterprise.inject.spi.InjectionPoint;
 import jakarta.inject.Inject;
-import jakarta.inject.Singleton;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 @OdiTest
-@Disabled("Pending feature in core: https://github.com/micronaut-projects/micronaut-core/pull/6058")
+@Disabled("BUG: InjectionPoint metadata runtime support pending in core: https://github.com/micronaut-projects/micronaut-core/pull/6058")
 public class InjectionPointTest {
 
     @Test
@@ -22,7 +22,7 @@ public class InjectionPointTest {
 
 }
 
-@Singleton
+@Dependent
 class SomeService extends AbstractService {
 
     SomeService(InjectionPoint constructorEventInjectionPoint) {
@@ -30,7 +30,7 @@ class SomeService extends AbstractService {
     }
 }
 
-@Singleton
+@Dependent
 class SomeWithRefService extends AbstractService {
 
     private final DependentService constructorInjectService;
@@ -61,7 +61,7 @@ class SomeWithRefService extends AbstractService {
     }
 }
 
-@Singleton
+@Dependent
 class DependentService extends AbstractService {
 
     DependentService(InjectionPoint constructorEventInjectionPoint) {

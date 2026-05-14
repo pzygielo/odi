@@ -35,8 +35,7 @@ public class InitializerMethodsTest {
     @Test
     @DisplayName("3.7.1. Declaring an initializer method")
     void testDeclareInitializerMethod(Order order) {
-        Assertions.assertNotNull(order.product);
-        Assertions.assertNotNull(order.customer);
+        Assertions.assertTrue(order.isInitialized());
     }
 }
 
@@ -54,6 +53,10 @@ class Order {
     @Inject
     public void setCustomer(User customer) {
         this.customer = customer;
+    }
+
+    boolean isInitialized() {
+        return product != null && customer != null;
     }
 
 }

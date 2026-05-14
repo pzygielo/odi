@@ -7,9 +7,9 @@ description = "ODI CDI"
 dependencies {
     annotationProcessor(project(":micronaut-odi-processor-cdi"))
 
-    implementation(mn.micronaut.context)
-    implementation(project(":micronaut-odi-core"))
-    implementation(libs.cdi.api)
+    api(mn.micronaut.context)
+    api(project(":micronaut-odi-core"))
+    api(libs.cdi.api)
 
     testAnnotationProcessor(project(":micronaut-odi-processor-cdi"))
 

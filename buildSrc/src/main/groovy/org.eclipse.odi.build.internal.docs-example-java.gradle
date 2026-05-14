@@ -1,0 +1,12 @@
+plugins {
+    id "org.eclipse.odi.build.internal.base"
+}
+
+dependencies {
+    annotationProcessor(projects.micronautOdiProcessorCdi)
+
+    implementation(projects.micronautOdiCdi)
+    implementation(libs.cdi.api)
+
+    testImplementation(libs.jupiter.engine)
+}

@@ -24,6 +24,8 @@ rootProject.name = "odi-project"
 
 micronautBuild {
     useStandardizedProjectNames = true
+    nonStandardProjectPathPrefixes.add(":docs-examples")
+    nonStandardProjectPathPrefixes.add(":docs-examples:")
 }
 
 fun booleanGradleProperty(name: String): Boolean? {
@@ -140,6 +142,7 @@ include(":odi-test-junit5")
 include(":tck-runner")
 include(":odi-cdi")
 include(":odi-processor-mp")
+include(":docs-examples:cdi-lite-java")
 
 project(":odi-core").projectDir = file("core")
 project(":odi-processor-cdi").projectDir = file("processor-cdi")

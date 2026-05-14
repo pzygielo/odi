@@ -22,11 +22,18 @@ import io.micronaut.core.annotation.Order;
 import io.micronaut.core.order.Ordered;
 import io.micronaut.core.util.CollectionUtils;
 import io.micronaut.inject.ast.ClassElement;
+import io.micronaut.inject.ast.Element;
+import io.micronaut.inject.ast.FieldElement;
+import io.micronaut.inject.ast.MemberElement;
+import io.micronaut.inject.ast.MethodElement;
 import io.micronaut.inject.visitor.TypeElementVisitor;
 import io.micronaut.inject.visitor.VisitorContext;
+import jakarta.annotation.Priority;
 import jakarta.enterprise.inject.Alternative;
+import jakarta.enterprise.inject.Produces;
 import org.eclipse.odi.cdi.processor.CdiUtil;
 
+import java.util.OptionalInt;
 import java.util.Set;
 
 /**
@@ -47,7 +54,50 @@ public class AlternativeVisitor implements TypeElementVisitor<Alternative, Objec
             element.annotate(Bean.class);
         }
         CdiUtil.visitPriority(context, element);
-        if (!element.hasDeclaredAnnotation(Order.class)) {
+        disableUnselectedAlternative(element, context);
+    }
+
+    @Override
+    public void visitMethod(MethodElement element, VisitorContext context) {
+        if (!prepareMemberAlternative(element)) {
+            return;
+        }
+        disableUnselectedAlternative(element, context);
+    }
+
+    @Override
+    public void visitField(FieldElement element, VisitorContext context) {
+        if (!prepareMemberAlternative(element)) {
+            return;
+        }
+        disableUnselectedAlternative(element, context);
+    }
+
+    private boolean prepareMemberAlternative(MemberElement element) {
+        if (element.hasDeclaredAnnotation(Alternative.class)) {
+            return true;
+        }
+        if (!element.hasDeclaredAnnotation(Produces.class)) {
+            return false;
+        }
+        ClassElement declaringType = element.getDeclaringType();
+        if (!declaringType.hasAnnotation(Alternative.class) && !declaringType.hasStereotype(Alternative.class)) {
+            return false;
+        }
+        element.annotate(Alternative.class);
+        OptionalInt priority = declaringType.intValue(Priority.class);
+        if (priority.isPresent()) {
+            int value = priority.getAsInt();
+            element.annotate(Priority.class, builder -> builder.value(value));
+            element.annotate(Order.class, builder -> builder.value(-value));
+        }
+        return true;
+    }
+
+    private void disableUnselectedAlternative(Element element, VisitorContext context) {
+        if (!element.hasDeclaredAnnotation(Order.class)
+                && !element.hasDeclaredAnnotation(Priority.class)
+                && !element.hasStereotype(Priority.class)) {
             // no priority specified so disable by default
             element.annotate(Order.class, (builder) ->
                     builder.value(Ordered.HIGHEST_PRECEDENCE)

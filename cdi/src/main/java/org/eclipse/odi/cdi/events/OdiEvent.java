@@ -37,6 +37,7 @@ import jakarta.enterprise.util.TypeLiteral;
 import org.eclipse.odi.cdi.AnnotationUtils;
 import org.eclipse.odi.cdi.OdiBeanContainer;
 import org.eclipse.odi.cdi.OdiUtils;
+import org.eclipse.odi.cdi.context.OdiRequestContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -204,8 +205,15 @@ final class OdiEvent<T> implements Event<T>, OdiEventMetadata {
         LinkedHashSet<Argument<?>> arguments = new LinkedHashSet<>();
         Argument<?> runtimeArgument = resolveRuntimeArgument(event);
         arguments.add(runtimeArgument);
-        arguments.add(eventType);
+        if (!sameEventArgument(runtimeArgument, eventType)) {
+            arguments.add(eventType);
+        }
         return arguments;
+    }
+
+    private static boolean sameEventArgument(Argument<?> left, Argument<?> right) {
+        return left.getType() == right.getType()
+                && Objects.equals(left.asType(), right.asType());
     }
 
     private Argument<?> resolveRuntimeArgument(@NonNull Object event) {
@@ -273,10 +281,18 @@ final class OdiEvent<T> implements Event<T>, OdiEventMetadata {
             CompletableFuture<Throwable> cf = CompletableFuture.completedFuture(null);
             for (ObserverMethod<T> observerMethod : observerMethods) {
                 CompletableFuture<Throwable> nextNotify = CompletableFuture.supplyAsync(() -> {
+                    OdiRequestContext requestContext = beanContainer.getBeanContext()
+                            .findBean(OdiRequestContext.class)
+                            .orElse(null);
+                    boolean requestContextActivated = requestContext != null && requestContext.activateRequestContext();
                     try {
                         notifyObserverMethod(event, observerMethod);
                     } catch (Throwable e) {
                         return e;
+                    } finally {
+                        if (requestContextActivated) {
+                            requestContext.deactivateRequestContext();
+                        }
                     }
                     return null;
                 }, executor);

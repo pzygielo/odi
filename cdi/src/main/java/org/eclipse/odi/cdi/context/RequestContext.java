@@ -15,21 +15,66 @@
  */
 package org.eclipse.odi.cdi.context;
 
+import io.micronaut.context.BeanProvider;
 import io.micronaut.core.annotation.Internal;
+import jakarta.enterprise.context.BeforeDestroyed;
+import jakarta.enterprise.context.ContextNotActiveException;
+import jakarta.enterprise.context.Destroyed;
+import jakarta.enterprise.context.Initialized;
 import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Singleton;
+import org.eclipse.odi.cdi.OdiBeanContainer;
 
 import java.lang.annotation.Annotation;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Simple {@link RequestScoped} Micronaut context.
  */
 @Internal
 @Singleton
-final class RequestContext extends AbstractContext {
+final class RequestContext extends AbstractContext implements OdiRequestContext {
+
+    private final BeanProvider<OdiBeanContainer> beanContainer;
+    private final ReentrantLock lock = new ReentrantLock();
+
+    RequestContext(BeanProvider<OdiBeanContainer> beanContainer) {
+        super(false);
+        this.beanContainer = beanContainer;
+    }
 
     @Override
     public Class<? extends Annotation> getScope() {
         return RequestScoped.class;
+    }
+
+    @Override
+    public boolean activateRequestContext() {
+        lock.lock();
+        try {
+            if (isActive()) {
+                return false;
+            }
+            activate();
+            beanContainer.get().getEvent().select(Initialized.Literal.REQUEST).fire(this);
+            return true;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    @Override
+    public void deactivateRequestContext() {
+        lock.lock();
+        try {
+            if (!isActive()) {
+                throw new ContextNotActiveException("Request context is not active");
+            }
+            beanContainer.get().getEvent().select(BeforeDestroyed.Literal.REQUEST).fire(this);
+            destroy();
+            beanContainer.get().getEvent().select(Destroyed.Literal.REQUEST).fire(this);
+        } finally {
+            lock.unlock();
+        }
     }
 }

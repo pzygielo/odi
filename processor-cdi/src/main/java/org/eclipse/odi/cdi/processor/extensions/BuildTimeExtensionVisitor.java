@@ -21,21 +21,25 @@ import io.micronaut.core.annotation.AnnotationClassValue;
 import io.micronaut.core.annotation.AnnotationUtil;
 import io.micronaut.core.annotation.AnnotationValue;
 import io.micronaut.core.annotation.Internal;
+import io.micronaut.core.annotation.Order;
 import io.micronaut.core.util.CollectionUtils;
 import io.micronaut.inject.ast.ClassElement;
 import io.micronaut.inject.ast.Element;
 import io.micronaut.inject.ast.ElementModifier;
 import io.micronaut.inject.ast.ElementQuery;
 import io.micronaut.inject.ast.FieldElement;
+import io.micronaut.inject.ast.MemberElement;
 import io.micronaut.inject.ast.MethodElement;
 import io.micronaut.inject.ast.beans.BeanElementBuilder;
 import io.micronaut.inject.ast.beans.BeanMethodElement;
 import io.micronaut.inject.visitor.TypeElementVisitor;
 import io.micronaut.inject.visitor.VisitorContext;
+import jakarta.annotation.Priority;
 import jakarta.enterprise.context.NormalScope;
 import jakarta.enterprise.event.Observes;
 import jakarta.enterprise.event.ObservesAsync;
 import jakarta.enterprise.inject.Disposes;
+import jakarta.enterprise.inject.Alternative;
 import jakarta.enterprise.inject.Produces;
 import jakarta.inject.Qualifier;
 import jakarta.inject.Scope;
@@ -54,6 +58,7 @@ import java.lang.annotation.RetentionPolicy;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
@@ -274,6 +279,9 @@ public final class BuildTimeExtensionVisitor implements TypeElementVisitor<Objec
                     builder.annotate(av);
                 }
             }
+            if (producingElement instanceof MemberElement) {
+                propagateAlternativeMetadata(((MemberElement) producingElement).getDeclaringType(), builder);
+            }
         };
         BeanElementBuilder beanElementBuilder = applicationClassElement
                 .addAssociatedBean(scannedClass);
@@ -315,6 +323,31 @@ public final class BuildTimeExtensionVisitor implements TypeElementVisitor<Objec
                 .produceBeans(producesMethods, producesConfigurer)
                 .produceBeans(producesFields, producesConfigurer)
                 .inject();
+    }
+
+    @SuppressWarnings("unchecked")
+    private void propagateAlternativeMetadata(ClassElement declaringType, BeanElementBuilder builder) {
+        if (!declaringType.hasAnnotation(Alternative.class) && !declaringType.hasStereotype(Alternative.class)) {
+            return;
+        }
+        builder.annotate(Alternative.class);
+        OptionalInt priority = declaringType.intValue(Priority.class);
+        if (priority.isPresent()) {
+            int value = priority.getAsInt();
+            builder.annotate(Priority.class, annotation -> annotation.value(value));
+            builder.annotate(Order.class, annotation -> annotation.value(-value));
+        } else {
+            copyAnnotation(declaringType, builder, Order.class);
+        }
+    }
+
+    private <A extends Annotation> void copyAnnotation(ClassElement source,
+                                                       BeanElementBuilder target,
+                                                       Class<A> annotationType) {
+        AnnotationValue<A> annotation = source.getAnnotation(annotationType);
+        if (annotation != null) {
+            target.annotate(annotation);
+        }
     }
 
     private void copyRegisteredQualifiers(ClassElement source, BeanElementBuilder target) {

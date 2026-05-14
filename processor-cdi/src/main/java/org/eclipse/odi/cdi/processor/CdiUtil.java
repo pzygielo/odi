@@ -308,6 +308,7 @@ public final class CdiUtil {
     }
 
     public static void visitBeanDefinition(VisitorContext context, Element beanDefinition) {
+        beanDefinition.annotate(org.eclipse.odi.cdi.processor.AnnotationUtil.ANN_ODI_BEAN_DEFINITION);
         boolean declaringElementOnly = beanDefinition instanceof MethodElement || beanDefinition instanceof FieldElement;
         if (needsDefaultQualifier(beanDefinition.getAnnotationMetadata(), declaringElementOnly)) {
             beanDefinition.annotate(Default.class);
@@ -1258,6 +1259,7 @@ public final class CdiUtil {
                 || typeName.equals(EventMetadata.class.getName())
                 || typeName.equals(InjectionPoint.class.getName())
                 || typeName.equals(Instance.class.getName())
+                || typeName.equals(jakarta.enterprise.context.control.RequestContextController.class.getName())
                 || typeName.equals(jakarta.enterprise.inject.spi.BeanContainer.class.getName())
                 || typeName.equals(jakarta.enterprise.inject.spi.BeanManager.class.getName())
                 || typeName.equals(jakarta.enterprise.inject.spi.Interceptor.class.getName())

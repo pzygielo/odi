@@ -18,6 +18,7 @@ package org.eclipse.odi.tck.arquillian;
 import io.micronaut.context.ApplicationContext;
 import org.eclipse.odi.cdi.OdiApplicationContextBuilder;
 import org.eclipse.odi.tck.porting.BeansImpl;
+import org.jboss.arquillian.container.se.api.ClassPath;
 import org.jboss.arquillian.container.spi.client.container.DeployableContainer;
 import org.jboss.arquillian.container.spi.client.protocol.ProtocolDescription;
 import org.jboss.arquillian.container.spi.client.protocol.metadata.ProtocolMetaData;
@@ -29,6 +30,7 @@ import org.jboss.arquillian.test.spi.TestClass;
 import org.jboss.shrinkwrap.api.Archive;
 import org.jboss.shrinkwrap.api.ShrinkWrap;
 import org.jboss.shrinkwrap.api.container.LibraryContainer;
+import org.jboss.shrinkwrap.api.exporter.ZipExporter;
 import org.jboss.shrinkwrap.api.spec.JavaArchive;
 import org.jboss.shrinkwrap.descriptor.api.Descriptor;
 import org.slf4j.Logger;
@@ -89,11 +91,7 @@ public class OdiDeployableContainer implements DeployableContainer<OdiContainerC
 
     @Override
     public ProtocolMetaData deploy(Archive<?> archive) {
-        if (archive instanceof LibraryContainer) {
-            ((LibraryContainer<?>) archive).addAsLibrary(buildSupportLibrary());
-        } else {
-            throw new IllegalStateException("Expected library container!");
-        }
+        addSupportLibrary(archive);
         old = Thread.currentThread().getContextClassLoader();
         if (testClass.get() == null) {
             throw new IllegalStateException("Test class not available");
@@ -138,6 +136,17 @@ public class OdiDeployableContainer implements DeployableContainer<OdiContainerC
         }
 
         return new ProtocolMetaData();
+    }
+
+    private static void addSupportLibrary(Archive<?> archive) {
+        JavaArchive supportLibrary = buildSupportLibrary();
+        if (ClassPath.isRepresentedBy(archive)) {
+            archive.add(supportLibrary, "/", ZipExporter.class);
+        } else if (archive instanceof LibraryContainer) {
+            ((LibraryContainer<?>) archive).addAsLibrary(supportLibrary);
+        } else {
+            throw new IllegalStateException("Expected library container or SE class path archive!");
+        }
     }
 
     @Override

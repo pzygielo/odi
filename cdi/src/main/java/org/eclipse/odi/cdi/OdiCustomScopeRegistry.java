@@ -33,6 +33,7 @@ import jakarta.enterprise.context.spi.Contextual;
 import jakarta.enterprise.context.spi.CreationalContext;
 import jakarta.enterprise.inject.CreationException;
 import jakarta.enterprise.inject.IllegalProductException;
+import jakarta.inject.Singleton;
 
 import java.lang.annotation.Annotation;
 import java.util.List;
@@ -65,7 +66,7 @@ final class OdiCustomScopeRegistry implements CustomScopeRegistry {
     @Override
     public Optional<CustomScope<?>> findDeclaredScope(@NonNull BeanType<?> beanType) {
         final Class<? extends Annotation> scope = MetaAnnotationSupport.resolveDeclaredScope(beanType.getAnnotationMetadata());
-        if (scope != Dependent.class) {
+        if (scope != Dependent.class && scope != Singleton.class) {
             return findScope(scope.getName());
         }
         return Optional.empty();

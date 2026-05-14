@@ -32,7 +32,15 @@ import java.util.concurrent.ConcurrentHashMap;
 public abstract class AbstractContext implements AlterableContext {
 
     private final Map<Contextual<?>, Entry> storage = new ConcurrentHashMap<>();
-    private boolean active = true;
+    private volatile boolean active;
+
+    protected AbstractContext() {
+        this(true);
+    }
+
+    protected AbstractContext(boolean active) {
+        this.active = active;
+    }
 
     @Override
     public <T> T get(Contextual<T> contextual, CreationalContext<T> creationalContext) {

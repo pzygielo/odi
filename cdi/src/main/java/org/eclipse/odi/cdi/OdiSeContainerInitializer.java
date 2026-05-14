@@ -18,8 +18,10 @@ package org.eclipse.odi.cdi;
 import java.lang.annotation.Annotation;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Predicate;
 
 import io.micronaut.context.ApplicationContext;
@@ -30,10 +32,12 @@ import io.micronaut.core.annotation.NonNull;
 import io.micronaut.core.io.scan.ClassPathResourceLoader;
 import io.micronaut.core.util.ArrayUtils;
 import io.micronaut.inject.BeanConfiguration;
+import io.micronaut.inject.BeanDefinition;
 import io.micronaut.inject.QualifiedBeanType;
 import jakarta.enterprise.inject.se.SeContainer;
 import jakarta.enterprise.inject.se.SeContainerInitializer;
 import jakarta.enterprise.inject.spi.Extension;
+import org.eclipse.odi.cdi.annotation.OdiBeanDefinition;
 
 /**
  * An implementation of {@link SeContainerInitializer} for ODI.
@@ -42,22 +46,30 @@ public class OdiSeContainerInitializer extends SeContainerInitializer implements
     private static final String ADDED_BEAN_CLASSES_PROPERTY = "org.eclipse.odi.cdi.se.added-bean-classes";
 
     private final ApplicationContextBuilder contextBuilder = new OdiApplicationContextBuilder();
-    private final List<String> addedBeanClassNames = new ArrayList<>();
+    private final LinkedHashSet<String> addedBeanClassNames = new LinkedHashSet<>();
+    private final List<PackageSelection> addedPackages = new ArrayList<>();
+    private Predicate<QualifiedBeanType<?>> beansPredicate = beanType -> true;
+    private ClassLoader classLoader;
+    private boolean discoveryDisabled;
+
+    public OdiSeContainerInitializer() {
+        classLoader = Thread.currentThread().getContextClassLoader();
+        contextBuilder.classLoader(classLoader);
+    }
 
     @Override
     public SeContainerInitializer addBeanClasses(Class<?>... classes) {
         if (ArrayUtils.isNotEmpty(classes)) {
             ClassLoader classLoader = null;
             for (Class<?> aClass : classes) {
-                if (!addedBeanClassNames.contains(aClass.getName())) {
-                    addedBeanClassNames.add(aClass.getName());
-                }
+                addedBeanClassNames.add(aClass.getName());
                 contextBuilder.packages(aClass.getPackageName());
                 if (classLoader == null) {
                     classLoader = aClass.getClassLoader();
                 }
             }
             if (classLoader != null) {
+                this.classLoader = classLoader;
                 contextBuilder.classLoader(classLoader);
             }
             contextBuilder.properties(Collections.singletonMap(ADDED_BEAN_CLASSES_PROPERTY, String.join(",", addedBeanClassNames)));
@@ -69,32 +81,40 @@ public class OdiSeContainerInitializer extends SeContainerInitializer implements
     public SeContainerInitializer addPackages(Class<?>... classes) {
         if (ArrayUtils.isNotEmpty(classes)) {
             for (Class<?> aClass : classes) {
-                contextBuilder.packages(aClass.getPackageName());
+                addPackage(aClass.getPackageName(), false);
             }
         }
         return this;
     }
 
     @Override
-    public SeContainerInitializer addPackages(boolean b, Class<?>... classes) {
-        // TODO: Support scan recursively?
-        return addPackages(classes);
+    public SeContainerInitializer addPackages(boolean scanRecursively, Class<?>... classes) {
+        if (ArrayUtils.isNotEmpty(classes)) {
+            for (Class<?> aClass : classes) {
+                addPackage(aClass.getPackageName(), scanRecursively);
+            }
+        }
+        return this;
     }
 
     @Override
     public SeContainerInitializer addPackages(Package... packages) {
         if (ArrayUtils.isNotEmpty(packages)) {
             for (Package aPackage : packages) {
-                contextBuilder.packages(aPackage.getName());
+                addPackage(aPackage.getName(), false);
             }
         }
         return this;
     }
 
     @Override
-    public SeContainerInitializer addPackages(boolean b, Package... packages) {
-        // TODO: Support scan recursively?
-        return addPackages(packages);
+    public SeContainerInitializer addPackages(boolean scanRecursively, Package... packages) {
+        if (ArrayUtils.isNotEmpty(packages)) {
+            for (Package aPackage : packages) {
+                addPackage(aPackage.getName(), scanRecursively);
+            }
+        }
+        return this;
     }
 
     @Override
@@ -143,17 +163,22 @@ public class OdiSeContainerInitializer extends SeContainerInitializer implements
 
     @Override
     public SeContainerInitializer disableDiscovery() {
+        discoveryDisabled = true;
         return this;
     }
 
     @Override
     public SeContainerInitializer setClassLoader(ClassLoader classLoader) {
+        this.classLoader = classLoader;
         contextBuilder.classLoader(classLoader);
         return this;
     }
 
     @Override
     public SeContainer initialize() {
+        if (discoveryDisabled) {
+            contextBuilder.beansPredicate(beanType -> beansPredicate.test(beanType) && isSelectedBean(beanType));
+        }
         final ApplicationContext context = contextBuilder.build();
         context.start();
         return new OdiSeContainer(context);
@@ -257,6 +282,7 @@ public class OdiSeContainerInitializer extends SeContainerInitializer implements
     @Override
     @NonNull
     public ApplicationContextBuilder classLoader(ClassLoader classLoader) {
+        this.classLoader = classLoader;
         return contextBuilder.classLoader(classLoader);
     }
 
@@ -306,6 +332,7 @@ public class OdiSeContainerInitializer extends SeContainerInitializer implements
 
     @Override
     public ApplicationContextBuilder beansPredicate(Predicate<QualifiedBeanType<?>> predicate) {
+        this.beansPredicate = predicate;
         return contextBuilder.beansPredicate(predicate);
     }
 
@@ -322,6 +349,69 @@ public class OdiSeContainerInitializer extends SeContainerInitializer implements
     @Override
     public ApplicationContextBuilder propertySourcesLocator(PropertySourcesLocator propertySourcesLocator) {
         return contextBuilder.propertySourcesLocator(propertySourcesLocator);
+    }
+
+    private void addPackage(String packageName, boolean recursive) {
+        contextBuilder.packages(packageName);
+        addedPackages.add(new PackageSelection(packageName, recursive));
+    }
+
+    private boolean isSelectedBean(QualifiedBeanType<?> beanType) {
+        if (isOdiInfrastructureBean(beanType.getBeanType()) || isExternalInfrastructureBean(beanType.getBeanType())) {
+            return true;
+        }
+        if (!beanType.getAnnotationMetadata().hasAnnotation(OdiBeanDefinition.class)) {
+            return true;
+        }
+        if (matchesSelectedClass(beanType.getBeanType())) {
+            return true;
+        }
+        Optional<Class<?>> declaringType = beanType instanceof BeanDefinition<?> beanDefinition
+                ? beanDefinition.getDeclaringType()
+                : Optional.empty();
+        if (declaringType.map(type -> isOdiInfrastructureBean(type) || isExternalInfrastructureBean(type)).orElse(false)) {
+            return true;
+        }
+        return declaringType.map(this::matchesSelectedClass).orElse(false)
+                || matchesSelectedPackage(beanType.getBeanType())
+                || declaringType.map(this::matchesSelectedPackage).orElse(false);
+    }
+
+    private static boolean isOdiInfrastructureBean(Class<?> beanType) {
+        return beanType.getName().startsWith("org.eclipse.odi.cdi.");
+    }
+
+    private boolean isExternalInfrastructureBean(Class<?> beanType) {
+        return classLoader != null && beanType.getClassLoader() != null && beanType.getClassLoader() != classLoader;
+    }
+
+    private boolean matchesSelectedClass(Class<?> beanType) {
+        return addedBeanClassNames.contains(beanType.getName());
+    }
+
+    private boolean matchesSelectedPackage(Class<?> beanType) {
+        String packageName = beanType.getPackageName();
+        for (PackageSelection addedPackage : addedPackages) {
+            if (addedPackage.matches(packageName)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static final class PackageSelection {
+        private final String packageName;
+        private final boolean recursive;
+
+        private PackageSelection(String packageName, boolean recursive) {
+            this.packageName = packageName;
+            this.recursive = recursive;
+        }
+
+        private boolean matches(String candidatePackage) {
+            return packageName.equals(candidatePackage)
+                    || (recursive && candidatePackage.startsWith(packageName + "."));
+        }
     }
 
 }

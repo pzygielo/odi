@@ -91,7 +91,7 @@ fun Test.configureCdiLiteTck() {
     classpath = sourceSets.test.get().runtimeClasspath
     setScanForTestClasses(false)
     useTestNG {
-        excludeGroups("cdi-full", "javaee-full")
+        excludeGroups("cdi-full", "integration", "javaee-full", "se")
     }
     systemProperty("org.jboss.cdi.tck.libraryDirectory", layout.buildDirectory.dir("tck-lib").get().asFile.absolutePath)
 }

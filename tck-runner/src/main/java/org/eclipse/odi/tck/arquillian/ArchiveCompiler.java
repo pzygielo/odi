@@ -25,6 +25,7 @@ import io.micronaut.core.io.service.SoftServiceLoader;
 import jakarta.enterprise.inject.build.compatible.spi.BuildCompatibleExtension;
 import org.eclipse.odi.cdi.processor.CdiUtil;
 import org.eclipse.odi.cdi.processor.extensions.BuildTimeExtensionRegistry;
+import org.jboss.arquillian.container.se.api.ClassPath;
 import org.jboss.shrinkwrap.api.Archive;
 import org.jboss.shrinkwrap.api.ArchivePath;
 import org.jboss.shrinkwrap.api.Node;
@@ -84,6 +85,8 @@ final class ArchiveCompiler {
         try {
             if (deploymentArchive instanceof WebArchive) {
                 compileWar();
+            } else if (ClassPath.isRepresentedBy(deploymentArchive)) {
+                compileClassPath();
             } else {
                 throw new ArchiveCompilerException("Unknown archive type: " + deploymentArchive);
             }
@@ -110,6 +113,28 @@ final class ArchiveCompiler {
 
                 Files.createDirectories(jarFilePath.getParent()); // make sure the directory exists
                 try (InputStream in = entry.getValue().getAsset().openStream()) {
+                    Files.copy(in, jarFilePath);
+                }
+                addSourceFilesFromJar(jarFilePath, sourceFiles, deploymentClassNames);
+            }
+        }
+
+        doCompile(sourceFiles, deploymentClassNames, deploymentDir.target.toFile());
+        setupCdiProviderService();
+    }
+
+    private void compileClassPath() throws ArchiveCompilationException, ArchiveCompilerException, IOException {
+        List<File> sourceFiles = new ArrayList<>();
+        Set<String> deploymentClassNames = new LinkedHashSet<>();
+        for (Map.Entry<ArchivePath, Node> entry : deploymentArchive.getContent().entrySet()) {
+            String path = entry.getKey().get();
+            Node node = entry.getValue();
+            if (path.endsWith(".jar") && node.getAsset() != null) {
+                String jarFile = path.startsWith("/") ? path.substring(1) : path;
+                Path jarFilePath = deploymentDir.lib.resolve(jarFile);
+
+                Files.createDirectories(jarFilePath.getParent());
+                try (InputStream in = node.getAsset().openStream()) {
                     Files.copy(in, jarFilePath);
                 }
                 addSourceFilesFromJar(jarFilePath, sourceFiles, deploymentClassNames);

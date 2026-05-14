@@ -21,6 +21,7 @@ import io.micronaut.context.event.ShutdownEvent;
 import io.micronaut.context.event.StartupEvent;
 import io.micronaut.core.annotation.Internal;
 import jakarta.enterprise.context.BeforeDestroyed;
+import jakarta.enterprise.context.Destroyed;
 import jakarta.enterprise.context.Initialized;
 import jakarta.enterprise.event.Shutdown;
 import jakarta.enterprise.event.Startup;
@@ -45,6 +46,7 @@ final class OdiLifecycleEventBridge implements ApplicationEventListener<BeanCont
         } else if (event instanceof ShutdownEvent) {
             beanContainer.getEvent().select(Shutdown.class).fire(new Shutdown());
             beanContainer.getEvent().select(BeforeDestroyed.Literal.APPLICATION).fire(event.getSource());
+            beanContainer.getEvent().select(Destroyed.Literal.APPLICATION).fire(event.getSource());
         }
     }
 

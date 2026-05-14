@@ -17,7 +17,9 @@ package org.eclipse.odi.cdi.processor.visitors;
 
 import io.micronaut.context.annotation.Bean;
 import io.micronaut.context.annotation.Factory;
+import io.micronaut.core.annotation.AnnotationValue;
 import io.micronaut.core.annotation.Nullable;
+import io.micronaut.core.annotation.Order;
 import io.micronaut.core.annotation.ReflectiveAccess;
 import io.micronaut.inject.ast.ClassElement;
 import io.micronaut.inject.ast.FieldElement;
@@ -26,10 +28,14 @@ import io.micronaut.inject.ast.MethodElement;
 import io.micronaut.inject.ast.ParameterElement;
 import io.micronaut.inject.visitor.TypeElementVisitor;
 import io.micronaut.inject.visitor.VisitorContext;
+import jakarta.annotation.Priority;
 import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.inject.Alternative;
 import jakarta.enterprise.inject.Produces;
 import org.eclipse.odi.cdi.processor.CdiUtil;
 
+import java.lang.annotation.Annotation;
+import java.util.OptionalInt;
 import java.util.Set;
 
 /**
@@ -115,6 +121,7 @@ public class ProducesVisitor implements TypeElementVisitor<Object, Produces> {
         if (!this.currentClass.hasAnnotation(Factory.class)) {
             this.currentClass.annotate(Factory.class);
         }
+        inheritAlternativeMetadata(element);
         if (CdiUtil.hasDependentScope(element, context) && !element.hasDeclaredAnnotation(Dependent.class)) {
             element.annotate(Dependent.class);
         }
@@ -123,6 +130,29 @@ public class ProducesVisitor implements TypeElementVisitor<Object, Produces> {
             element.annotate(Nullable.class);
         }
         element.annotate(Bean.class);
+    }
+
+    private void inheritAlternativeMetadata(MemberElement element) {
+        ClassElement declaringType = element.getDeclaringType();
+        if (!declaringType.hasAnnotation(Alternative.class) && !declaringType.hasStereotype(Alternative.class)) {
+            return;
+        }
+        element.annotate(Alternative.class);
+        OptionalInt priority = declaringType.intValue(Priority.class);
+        if (priority.isPresent()) {
+            int value = priority.getAsInt();
+            element.annotate(Priority.class, builder -> builder.value(value));
+            element.annotate(Order.class, builder -> builder.value(-value));
+        } else {
+            copyAnnotation(declaringType, element, Order.class);
+        }
+    }
+
+    private <A extends Annotation> void copyAnnotation(ClassElement source, MemberElement target, Class<A> annotationType) {
+        AnnotationValue<A> annotation = source.getAnnotation(annotationType);
+        if (annotation != null) {
+            target.annotate(annotation);
+        }
     }
 
     @Override

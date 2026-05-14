@@ -15,6 +15,11 @@
  */
 package org.eclipse.odi.tck.arquillian;
 
+import io.micronaut.context.ApplicationContext;
+import jakarta.enterprise.context.RequestScoped;
+import jakarta.enterprise.context.control.RequestContextController;
+import jakarta.enterprise.context.spi.Context;
+import jakarta.enterprise.inject.spi.BeanManager;
 import org.jboss.arquillian.container.spi.client.protocol.ProtocolDescription;
 import org.jboss.arquillian.container.spi.client.protocol.metadata.ProtocolMetaData;
 import org.jboss.arquillian.container.test.impl.client.protocol.local.LocalDeploymentPackager;
@@ -75,6 +80,9 @@ public class OdiProtocol implements Protocol<OdiProtocolConfiguration> {
         @Inject
         Instance<ClassLoader> applicationClassLoader;
 
+        @Inject
+        Instance<ApplicationContext> runningApplicationContext;
+
         @Override
         public TestResult invoke(TestMethodExecutor testMethodExecutor) {
             event.fire(new LocalExecutionEvent(new TestMethodExecutor() {
@@ -101,6 +109,9 @@ public class OdiProtocol implements Protocol<OdiProtocolConfiguration> {
                             Thread.currentThread().setContextClassLoader(applicationClassLoader.get());
 
                             Object actualTestInstance = OdiDeployableContainer.testInstance;
+                            ApplicationContext applicationContext = runningApplicationContext.get();
+                            RequestContextController requestContextController = applicationContext.getBean(RequestContextController.class);
+                            BeanManager beanManager = applicationContext.getBean(BeanManager.class);
 
                             Method actualMethod;
                             try {
@@ -112,6 +123,8 @@ public class OdiProtocol implements Protocol<OdiProtocolConfiguration> {
                                 actualMethod.setAccessible(true);
                             }
 
+                            boolean requestContextActivated = requestContextController.activate();
+                            Context requestContext = beanManager.getContext(RequestScoped.class);
                             try {
                                 actualMethod.invoke(actualTestInstance, parameters);
                             } catch (InvocationTargetException e) {
@@ -120,6 +133,10 @@ public class OdiProtocol implements Protocol<OdiProtocolConfiguration> {
                                     throw cause;
                                 } else {
                                     throw e;
+                                }
+                            } finally {
+                                if (requestContextActivated && requestContext.isActive()) {
+                                    requestContextController.deactivate();
                                 }
                             }
                         } finally {

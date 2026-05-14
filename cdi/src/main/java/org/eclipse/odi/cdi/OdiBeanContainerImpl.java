@@ -257,10 +257,17 @@ final class OdiBeanContainerImpl implements OdiBeanContainer {
         Collection<BeanDefinition<T>> beanDefinitions = applicationContext.getBeanDefinitions(argument, qualifier);
         if (qualifier instanceof DefaultQualifier) {
             return beanDefinitions.stream()
+                    .filter(OdiBeanContainerImpl::isEnabledBeanDefinition)
                     .filter(DefaultQualifier::hasDefaultQualifier)
                     .collect(Collectors.toList());
         }
-        return beanDefinitions;
+        return beanDefinitions.stream()
+                .filter(OdiBeanContainerImpl::isEnabledBeanDefinition)
+                .collect(Collectors.toList());
+    }
+
+    private static boolean isEnabledBeanDefinition(BeanDefinition<?> beanDefinition) {
+        return !beanDefinition.hasStereotype(Alternative.class) || getPriority(beanDefinition) > 0;
     }
 
     private static <T> Collection<BeanDefinition<T>> mergeBeanDefinitions(Collection<BeanDefinition<T>> first,

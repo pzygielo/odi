@@ -67,6 +67,7 @@ final class OdiSeContainer extends CDI<Object>
 
     @Override
     public void close() {
+        ensureRunning();
         try {
             applicationContext.close();
         } finally {
@@ -122,11 +123,14 @@ final class OdiSeContainer extends CDI<Object>
 
     @Override
     public BeanManager getBeanManager() {
-        throw new UnsupportedOperationException("Use CDI.current().getBeanContainer() instead");
+        ensureRunning();
+        return applicationContext.findBean(BeanManager.class)
+                .orElseThrow(() -> new UnsupportedOperationException("Use CDI.current().getBeanContainer() instead"));
     }
 
     @Override
     public BeanContainer getBeanContainer() {
+        ensureRunning();
         return beanContainer;
     }
 
@@ -142,6 +146,7 @@ final class OdiSeContainer extends CDI<Object>
 
     @Override
     public <U> OdiInstance<U> select(Argument<U> argument, Qualifier<U> qualifier) {
+        ensureRunning();
         return new OdiInstanceImpl<>(
                 beanContainer,
                 null,
@@ -153,20 +158,20 @@ final class OdiSeContainer extends CDI<Object>
 
     @Override
     public OdiInstance<Object> select(Annotation... qualifiers) {
-        if (!isRunning()) {
-            throw new IllegalStateException("SeContainer already shutdown");
-        }
+        ensureRunning();
         return new OdiInstanceImpl<>(beanContainer, null, Argument.OBJECT_ARGUMENT, qualifiers);
     }
 
     @Override
     public <U> OdiInstance<U> select(Class<U> subtype, Annotation... qualifiers) {
+        ensureRunning();
         return new OdiInstanceImpl<>(beanContainer, null, Argument.of(subtype), qualifiers);
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     @Override
     public <U> OdiInstance<U> select(TypeLiteral<U> subtype, Annotation... qualifiers) {
+        ensureRunning();
         return new OdiInstanceImpl(beanContainer, null, Argument.of(subtype.getType()), qualifiers);
     }
 
@@ -289,6 +294,12 @@ final class OdiSeContainer extends CDI<Object>
         }
 
         throw new UnsatisfiedResolutionException("Cannot resolve bean for injection point: " + injectionPoint);
+    }
+
+    private void ensureRunning() {
+        if (!isRunning()) {
+            throw new IllegalStateException("SeContainer already shutdown");
+        }
     }
 
 }

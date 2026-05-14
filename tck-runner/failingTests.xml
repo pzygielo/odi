@@ -35,7 +35,6 @@
                     <exclude name="testGetInjectableReferenceReturnsDelegateForDelegateInjectionPoint"/>
                 </methods>
             </class>
-
             <!--            Cannot apply AOP advice to final class-->
             <class name="org.jboss.cdi.tck.tests.implementation.simple.lifecycle.unproxyable.UnproxyableManagedBeanTest">
                 <methods>
@@ -51,66 +50,6 @@
                     <exclude name="testNormalCircularConstructors"/>
                     <exclude name="testNormalProducerMethodDeclaredOnDependentBeanWhichInjectsProducedBean"/>
                     <exclude name="testSelfConsumingConstructorsOnNormalBean"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.se.discovery.trimmed.TrimmedBeanArchiveSETest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.se.discovery.implicit.ImplicitBeanArchiveWithSystemPropertyTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.se.discovery.implicit.ImplicitBeanArchiveSETest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.se.container.contextualReference.InvalidContextualReferenceTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.se.container.BootstrapSEContainerTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.se.container.customClassloader.CustomClassLoaderSETest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.se.context.custom.CustomRequestContextSETest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.se.context.activation.interceptor.ActivateRequestContextByInterceptorTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.se.context.activation.programmatic.ActivateRequestContextProgrammaticallyTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.se.context.ContextSETest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.se.context.request.RequestContextTest">
-                <methods>
-                    <exclude name=".*"/>
-                </methods>
-            </class>
-            <class name="org.jboss.cdi.tck.tests.se.customCDIProvider.CustomCDIProviderTest">
-                <methods>
-                    <exclude name=".*"/>
                 </methods>
             </class>
             <!--            Bean container-->

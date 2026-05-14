@@ -23,6 +23,7 @@ import io.micronaut.core.reflect.ReflectionUtils;
 import io.micronaut.core.type.Argument;
 import io.micronaut.inject.BeanDefinition;
 import io.micronaut.inject.QualifiedBeanType;
+import jakarta.enterprise.context.NormalScope;
 import jakarta.enterprise.inject.TransientReference;
 
 import java.lang.reflect.Type;
@@ -68,6 +69,16 @@ public final class OdiApplicationContextBuilder extends DefaultApplicationContex
                 return resolutionContext.getPath().currentSegment()
                         .map(segment -> segment.getArgument().getAnnotationMetadata().hasAnnotation(TransientReference.class))
                         .orElse(false);
+            }
+
+            @Override
+            public boolean shouldInitializeBean(BeanResolutionContext resolutionContext, BeanDefinition<?> beanDefinition, Object bean) {
+                return !(beanDefinition.isProxy() && beanDefinition.getAnnotationMetadata().hasStereotype(NormalScope.class));
+            }
+
+            @Override
+            public boolean shouldPreserveLazyProxyTargetResolutionPath(BeanResolutionContext resolutionContext, BeanDefinition<?> proxyBeanDefinition) {
+                return !proxyBeanDefinition.getAnnotationMetadata().hasStereotype(NormalScope.class);
             }
 
             @Override

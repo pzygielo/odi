@@ -35,17 +35,6 @@
                     <exclude name="testGetInjectableReferenceReturnsDelegateForDelegateInjectionPoint"/>
                 </methods>
             </class>
-            <class name="org.jboss.cdi.tck.tests.lookup.circular.CircularDependencyTest">
-                <!-- Properly detect circular dependency for lazy proxy types -->
-                <methods>
-                    <exclude name="testCircularInjectionOnOneNormalAndOneDependentBean"/>
-                    <exclude name="testCircularInjectionOnTwoNormalBeans"/>
-                    <exclude name="testNormalAndDependentCircularConstructors"/>
-                    <exclude name="testNormalCircularConstructors"/>
-                    <exclude name="testNormalProducerMethodDeclaredOnDependentBeanWhichInjectsProducedBean"/>
-                    <exclude name="testSelfConsumingConstructorsOnNormalBean"/>
-                </methods>
-            </class>
             <!--            Bean container-->
         </classes>
 

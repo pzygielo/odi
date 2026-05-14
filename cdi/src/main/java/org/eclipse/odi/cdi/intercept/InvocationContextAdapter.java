@@ -15,7 +15,6 @@
  */
 package org.eclipse.odi.cdi.intercept;
 
-import io.micronaut.aop.InterceptedProxy;
 import io.micronaut.aop.Interceptor;
 import io.micronaut.aop.InterceptorKind;
 import io.micronaut.aop.InvocationContext;
@@ -74,11 +73,7 @@ class InvocationContextAdapter<B> implements jakarta.interceptor.InvocationConte
 
     @Override
     public Object getTarget() {
-        final Object target = invocationContext.getTarget();
-        if (target instanceof InterceptedProxy) {
-            return ((InterceptedProxy<?>) target).interceptedTarget();
-        }
-        return target;
+        return JakartaInterceptorAdapter.resolveContextualTarget(invocationContext.getTarget());
     }
 
     @Override

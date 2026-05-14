@@ -36,12 +36,6 @@
                 </methods>
             </class>
 
-            <class name="org.jboss.cdi.tck.interceptors.tests.contract.interceptorLifeCycle.InterceptorLifeCycleTest">
-                <methods>
-                    <!-- TCK expects destroy interceptors initialized at the same time as bean retrieved -->
-                    <exclude name="testInterceptorInstanceCreatedWhenTargetInstanceCreated"/>
-                </methods>
-            </class>
             <!--            Cannot apply AOP advice to final class-->
             <class name="org.jboss.cdi.tck.tests.implementation.simple.lifecycle.unproxyable.UnproxyableManagedBeanTest">
                 <methods>

@@ -23,6 +23,7 @@ import io.micronaut.aop.InvocationContext;
 import io.micronaut.aop.MethodInterceptor;
 import io.micronaut.aop.MethodInvocationContext;
 import io.micronaut.context.BeanContext;
+import io.micronaut.context.BeanRegistration;
 import io.micronaut.context.BeanResolutionContext;
 import io.micronaut.core.annotation.Internal;
 import io.micronaut.core.annotation.NonNull;
@@ -37,6 +38,7 @@ import org.eclipse.odi.cdi.AnnotationUtils;
 import org.eclipse.odi.cdi.OdiBeanImpl;
 
 import java.lang.annotation.Annotation;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -59,7 +61,6 @@ public final class JakartaInterceptorAdapter<B> extends OdiBeanImpl<B> implement
 
     private final BeanDefinition<B> beanDefinition;
     private final BeanContext beanContext;
-    private final B interceptorBean;
     private final int priority;
     private ExecutableMethod<B, Object>[] aroundConstruct;
     private ExecutableMethod<B, Object>[] aroundInvoke;
@@ -68,8 +69,9 @@ public final class JakartaInterceptorAdapter<B> extends OdiBeanImpl<B> implement
     private Set<Annotation> interceptorBindings;
     private boolean isSelfInterceptor;
     private static final ReentrantReadWriteLock TARGET_INTERCEPTOR_INSTANCES_LOCK = new ReentrantReadWriteLock();
-    private static final Map<Object, Map<String, Object>> TARGET_INTERCEPTOR_INSTANCES =
+    private static final Map<Object, Map<String, BeanRegistration<?>>> TARGET_INTERCEPTOR_INSTANCES =
             new IdentityHashMap<>();
+    private static final Map<Object, Object> TARGET_CONTEXTUAL_INSTANCES = new IdentityHashMap<>();
 
     /**
      * Default constructor.
@@ -84,10 +86,7 @@ public final class JakartaInterceptorAdapter<B> extends OdiBeanImpl<B> implement
         super(beanContext, beanDefinition);
         this.beanContext = beanContext;
         this.beanDefinition = beanContext.getBeanDefinition(beanDefinition.asArgument());
-        if (this.beanDefinition.hasStereotype(jakarta.interceptor.Interceptor.class)) {
-            this.interceptorBean = resolutionContext.getBean(this.beanDefinition.asArgument());
-        } else {
-            this.interceptorBean = null;
+        if (!this.beanDefinition.hasStereotype(jakarta.interceptor.Interceptor.class)) {
             this.isSelfInterceptor = true;
         }
         this.priority = this.beanDefinition.intValue(Priority.class).orElse(0);
@@ -168,9 +167,10 @@ public final class JakartaInterceptorAdapter<B> extends OdiBeanImpl<B> implement
         if (aroundConstruct != null) {
             ConstructorInvocationContextAdapter<B> constructorInvocationContextAdapter =
                     new ConstructorInvocationContextAdapter<>(this, context, aroundConstruct);
-            B interceptor = resolveInterceptorBean();
+            BeanRegistration<B> interceptorRegistration = resolveInterceptorBeanRegistration();
+            B interceptor = interceptorRegistration.getBean();
             Object target = constructorInvocationContextAdapter.invoke(interceptor);
-            rememberInterceptorBean(target, interceptor);
+            rememberInterceptorBean(target, interceptorRegistration);
             return target;
         } else {
             return context.proceed();
@@ -275,10 +275,14 @@ public final class JakartaInterceptorAdapter<B> extends OdiBeanImpl<B> implement
     }
 
     private B resolveInterceptorBean() {
+        return resolveInterceptorBeanRegistration().getBean();
+    }
+
+    private BeanRegistration<B> resolveInterceptorBeanRegistration() {
         if (isSelfInterceptor) {
             throw new IllegalStateException("Self interceptor target is not available");
         }
-        return interceptorBean;
+        return beanContext.getBeanRegistration(beanDefinition.asArgument(), beanDefinition.getDeclaredQualifier());
     }
 
     @SuppressWarnings("unchecked")
@@ -288,7 +292,7 @@ public final class JakartaInterceptorAdapter<B> extends OdiBeanImpl<B> implement
             if (targetInterceptorBean != null) {
                 return targetInterceptorBean;
             }
-            return resolveInterceptorBean();
+            return ensureInterceptorBean(context.getTarget());
         }
         Object target = context.getTarget();
         if (target instanceof InterceptedProxy<?> interceptedProxy) {
@@ -297,28 +301,80 @@ public final class JakartaInterceptorAdapter<B> extends OdiBeanImpl<B> implement
         return (B) target;
     }
 
-    private void rememberInterceptorBean(@Nullable Object target, B interceptor) {
+    @SuppressWarnings("unchecked")
+    B ensureInterceptorBean(@Nullable Object target) {
+        if (isSelfInterceptor) {
+            if (target instanceof InterceptedProxy<?> interceptedProxy) {
+                target = interceptedProxy.interceptedTarget();
+            }
+            return (B) target;
+        }
+        if (target == null) {
+            return resolveInterceptorBean();
+        }
+        TARGET_INTERCEPTOR_INSTANCES_LOCK.writeLock().lock();
+        try {
+            BeanRegistration<B> interceptorRegistration = findInterceptorRegistrationForTargetWithoutLock(target);
+            if (interceptorRegistration == null && target instanceof InterceptedProxy<?> interceptedProxy) {
+                interceptorRegistration = findInterceptorRegistrationForTargetWithoutLock(interceptedProxy.interceptedTarget());
+            }
+            if (interceptorRegistration == null) {
+                interceptorRegistration = resolveInterceptorBeanRegistration();
+                rememberInterceptorBeanForTargetWithoutLock(target, interceptorRegistration);
+                if (target instanceof InterceptedProxy<?> interceptedProxy) {
+                    Object interceptedTarget = interceptedProxy.interceptedTarget();
+                    if (interceptedTarget != null) {
+                        rememberInterceptorBeanForTargetWithoutLock(interceptedTarget, interceptorRegistration);
+                        rememberContextualTargetWithoutLock(interceptedTarget, target);
+                    }
+                }
+            }
+            return interceptorRegistration.getBean();
+        } finally {
+            TARGET_INTERCEPTOR_INSTANCES_LOCK.writeLock().unlock();
+        }
+    }
+
+    private void rememberInterceptorBean(@Nullable Object target, BeanRegistration<B> interceptorRegistration) {
         if (target == null || isSelfInterceptor) {
             return;
         }
-        rememberInterceptorBeanForTarget(target, interceptor);
+        rememberInterceptorBeanForTarget(target, interceptorRegistration);
         if (target instanceof InterceptedProxy<?> interceptedProxy) {
             Object interceptedTarget = interceptedProxy.interceptedTarget();
             if (interceptedTarget != null) {
-                rememberInterceptorBeanForTarget(interceptedTarget, interceptor);
+                rememberInterceptorBeanForTarget(interceptedTarget, interceptorRegistration);
+                rememberContextualTarget(interceptedTarget, target);
             }
         }
     }
 
-    private void rememberInterceptorBeanForTarget(Object target, B interceptor) {
+    private void rememberInterceptorBeanForTarget(Object target, BeanRegistration<B> interceptorRegistration) {
         TARGET_INTERCEPTOR_INSTANCES_LOCK.writeLock().lock();
         try {
-            TARGET_INTERCEPTOR_INSTANCES
-                    .computeIfAbsent(target, ignored -> new HashMap<>())
-                    .put(beanDefinition.getName(), interceptor);
+            rememberInterceptorBeanForTargetWithoutLock(target, interceptorRegistration);
         } finally {
             TARGET_INTERCEPTOR_INSTANCES_LOCK.writeLock().unlock();
         }
+    }
+
+    private void rememberInterceptorBeanForTargetWithoutLock(Object target, BeanRegistration<B> interceptorRegistration) {
+        TARGET_INTERCEPTOR_INSTANCES
+                .computeIfAbsent(target, ignored -> new HashMap<>())
+                .put(beanDefinition.getName(), interceptorRegistration);
+    }
+
+    private void rememberContextualTarget(Object interceptedTarget, Object contextualTarget) {
+        TARGET_INTERCEPTOR_INSTANCES_LOCK.writeLock().lock();
+        try {
+            rememberContextualTargetWithoutLock(interceptedTarget, contextualTarget);
+        } finally {
+            TARGET_INTERCEPTOR_INSTANCES_LOCK.writeLock().unlock();
+        }
+    }
+
+    private void rememberContextualTargetWithoutLock(Object interceptedTarget, Object contextualTarget) {
+        TARGET_CONTEXTUAL_INSTANCES.put(interceptedTarget, contextualTarget);
     }
 
     @SuppressWarnings("unchecked")
@@ -342,50 +398,122 @@ public final class JakartaInterceptorAdapter<B> extends OdiBeanImpl<B> implement
         }
         TARGET_INTERCEPTOR_INSTANCES_LOCK.readLock().lock();
         try {
-            Map<String, Object> interceptors = TARGET_INTERCEPTOR_INSTANCES.get(target);
-            if (interceptors == null) {
-                return null;
-            }
-            return (B) interceptors.get(beanDefinition.getName());
+            return findInterceptorBeanForTargetWithoutLock(target);
         } finally {
             TARGET_INTERCEPTOR_INSTANCES_LOCK.readLock().unlock();
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    @Nullable
+    private B findInterceptorBeanForTargetWithoutLock(@Nullable Object target) {
+        BeanRegistration<B> interceptorRegistration = findInterceptorRegistrationForTargetWithoutLock(target);
+        return interceptorRegistration == null ? null : interceptorRegistration.getBean();
+    }
+
+    @SuppressWarnings("unchecked")
+    @Nullable
+    private BeanRegistration<B> findInterceptorRegistrationForTargetWithoutLock(@Nullable Object target) {
+        if (target == null) {
+            return null;
+        }
+        Map<String, BeanRegistration<?>> interceptors = TARGET_INTERCEPTOR_INSTANCES.get(target);
+        if (interceptors == null) {
+            return null;
+        }
+        return (BeanRegistration<B>) interceptors.get(beanDefinition.getName());
     }
 
     private void forgetInterceptorBean(@Nullable Object target) {
         if (target == null || isSelfInterceptor) {
             return;
         }
+        BeanRegistration<?> interceptorRegistration;
         TARGET_INTERCEPTOR_INSTANCES_LOCK.writeLock().lock();
         try {
-            forgetInterceptorBeanForTarget(target);
+            interceptorRegistration = forgetInterceptorBeanForTarget(target);
             if (target instanceof InterceptedProxy<?> interceptedProxy) {
                 Object interceptedTarget = interceptedProxy.interceptedTarget();
                 if (interceptedTarget != null) {
-                    forgetInterceptorBeanForTarget(interceptedTarget);
+                    BeanRegistration<?> targetInterceptorRegistration = forgetInterceptorBeanForTarget(interceptedTarget);
+                    if (interceptorRegistration == null) {
+                        interceptorRegistration = targetInterceptorRegistration;
+                    }
+                    TARGET_CONTEXTUAL_INSTANCES.remove(interceptedTarget);
                 }
             }
+            TARGET_CONTEXTUAL_INSTANCES.remove(target);
         } finally {
             TARGET_INTERCEPTOR_INSTANCES_LOCK.writeLock().unlock();
         }
+        if (interceptorRegistration != null) {
+            beanContext.destroyBean((BeanRegistration) interceptorRegistration);
+        }
     }
 
-    private void forgetInterceptorBeanForTarget(Object target) {
-        Map<String, Object> interceptors = TARGET_INTERCEPTOR_INSTANCES.get(target);
+    @Nullable
+    private BeanRegistration<?> forgetInterceptorBeanForTarget(Object target) {
+        Map<String, BeanRegistration<?>> interceptors = TARGET_INTERCEPTOR_INSTANCES.get(target);
         if (interceptors != null) {
-            interceptors.remove(beanDefinition.getName());
+            BeanRegistration<?> interceptor = interceptors.remove(beanDefinition.getName());
             if (interceptors.isEmpty()) {
                 TARGET_INTERCEPTOR_INSTANCES.remove(target);
             }
+            return interceptor;
         }
+        return null;
     }
 
     static void clearTargetInterceptorBeans() {
         TARGET_INTERCEPTOR_INSTANCES_LOCK.writeLock().lock();
         try {
             TARGET_INTERCEPTOR_INSTANCES.clear();
+            TARGET_CONTEXTUAL_INSTANCES.clear();
         } finally {
             TARGET_INTERCEPTOR_INSTANCES_LOCK.writeLock().unlock();
+        }
+    }
+
+    static void destroyInterceptorBeansForTarget(BeanContext beanContext, @Nullable Object target) {
+        if (target == null) {
+            return;
+        }
+        Set<BeanRegistration<?>> interceptors = Collections.newSetFromMap(new IdentityHashMap<>());
+        TARGET_INTERCEPTOR_INSTANCES_LOCK.writeLock().lock();
+        try {
+            collectInterceptorBeansForTargetWithoutLock(target, interceptors);
+            Object contextualTarget = TARGET_CONTEXTUAL_INSTANCES.remove(target);
+            if (contextualTarget != null) {
+                collectInterceptorBeansForTargetWithoutLock(contextualTarget, interceptors);
+            }
+            if (target instanceof InterceptedProxy<?> interceptedProxy) {
+                Object interceptedTarget = interceptedProxy.interceptedTarget();
+                if (interceptedTarget != null) {
+                    TARGET_CONTEXTUAL_INSTANCES.remove(interceptedTarget);
+                    collectInterceptorBeansForTargetWithoutLock(interceptedTarget, interceptors);
+                }
+            }
+        } finally {
+            TARGET_INTERCEPTOR_INSTANCES_LOCK.writeLock().unlock();
+        }
+        for (BeanRegistration<?> interceptor : interceptors) {
+            beanContext.destroyBean((BeanRegistration) interceptor);
+        }
+    }
+
+    private static void collectInterceptorBeansForTargetWithoutLock(Object target, Set<BeanRegistration<?>> interceptors) {
+        Map<String, BeanRegistration<?>> targetInterceptors = TARGET_INTERCEPTOR_INSTANCES.remove(target);
+        if (targetInterceptors != null) {
+            interceptors.addAll(targetInterceptors.values());
+        }
+    }
+
+    static Object resolveContextualTarget(Object target) {
+        TARGET_INTERCEPTOR_INSTANCES_LOCK.readLock().lock();
+        try {
+            return TARGET_CONTEXTUAL_INSTANCES.getOrDefault(target, target);
+        } finally {
+            TARGET_INTERCEPTOR_INSTANCES_LOCK.readLock().unlock();
         }
     }
 

@@ -33,6 +33,7 @@ import jakarta.annotation.PreDestroy;
 import jakarta.interceptor.AroundConstruct;
 import jakarta.interceptor.AroundInvoke;
 import jakarta.interceptor.Interceptor;
+import org.eclipse.odi.cdi.annotation.OdiInterceptorAdapter;
 import org.eclipse.odi.cdi.processor.CdiUtil;
 
 import java.lang.annotation.Annotation;
@@ -107,6 +108,9 @@ public class InterceptorVisitor implements TypeElementVisitor<Interceptor, Objec
                     .withParameters(parameters -> parameters[0].typeArguments(interceptorBean))
                     .annotate(Prototype.class)
                     .annotate(InterceptorBean.class)
+                    .annotate(OdiInterceptorAdapter.class, builder -> builder
+                            .member("interceptorType", interceptorBean.getName())
+                            .member("self", isSelfInterceptor))
                     .annotate(Indexed.class, builder -> builder.value(io.micronaut.aop.Interceptor.class));
             for (String interceptorBinding : interceptorBindings) {
                 final AnnotationValue<Annotation> av = interceptorBean.getAnnotation(interceptorBinding);

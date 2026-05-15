@@ -42,6 +42,22 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Resolve Micronaut Core checkout cache key
+        id: micronaut_core
+        run: |
+          set -euo pipefail
+          sha="$(git ls-remote https://github.com/micronaut-projects/micronaut-core.git refs/heads/cdi-5.1.x | cut -f1)"
+          test -n "${sha}"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Micronaut Core included build checkout
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: checkouts/micronaut-core-cdi
+          key: ${{ runner.os }}-micronaut-core-cdi-${{ steps.micronaut_core.outputs.sha }}
+          restore-keys: |
+            ${{ runner.os }}-micronaut-core-cdi-
+
       - name: Setup GraalVM CE
         uses: graalvm/setup-graalvm@bef4b0e916c7dd079bf60fb95d49139f67e32c5f # v1
         with:
@@ -76,12 +92,37 @@ jobs:
 
       - name: Publish to Github Pages
         if: success() && github.event_name == 'push' && matrix.java == '25'
-        uses: micronaut-projects/github-pages-deploy-action@76d63aafbab7108d74e83be4e5b3b0501382e829 # master
         env:
-          TARGET_REPOSITORY: ${{ github.repository }}
-          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
-          BRANCH: gh-pages
-          FOLDER: build/docs
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          docs_branch="gh-pages"
+          docs_dir="$(mktemp -d)"
+          repository_url="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+          git config --global user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+          git config --global user.name "${GITHUB_ACTOR}"
+
+          if git ls-remote --exit-code --heads "${repository_url}" "${docs_branch}" > /dev/null 2>&1; then
+            git clone --depth 1 --branch "${docs_branch}" "${repository_url}" "${docs_dir}"
+          else
+            git init "${docs_dir}"
+            git -C "${docs_dir}" checkout -b "${docs_branch}"
+            git -C "${docs_dir}" remote add origin "${repository_url}"
+          fi
+
+          find "${docs_dir}" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -R build/docs/. "${docs_dir}/"
+          touch "${docs_dir}/.nojekyll"
+
+          git -C "${docs_dir}" add -A
+          if git -C "${docs_dir}" diff --cached --quiet; then
+            echo "No documentation changes to publish."
+          else
+            git -C "${docs_dir}" commit -m "Deploy docs for ${GITHUB_SHA}"
+            git -C "${docs_dir}" push origin "${docs_branch}"
+          fi
 
       - name: Optional cleanup step
         run: |

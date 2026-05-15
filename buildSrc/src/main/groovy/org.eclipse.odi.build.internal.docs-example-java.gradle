@@ -1,5 +1,6 @@
 plugins {
     id "org.eclipse.odi.build.internal.base"
+    id "org.graalvm.buildtools.native"
 }
 
 dependencies {
@@ -9,4 +10,19 @@ dependencies {
     implementation(libs.cdi.api)
 
     testImplementation(libs.jupiter.engine)
+}
+
+graalvmNative {
+    toolchainDetection = false
+    metadataRepository {
+        enabled = true
+    }
+    binaries {
+        named("main") {
+            sharedLibrary.set(false)
+        }
+        all {
+            resources.autodetect()
+        }
+    }
 }

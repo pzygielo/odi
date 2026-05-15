@@ -1,58 +1,65 @@
 name: Full TCK run
 on:
-  push:
-    branches:
-      - disabled
-#      - main
-#      - '[1-9]+.[0-9]+.x'
-  pull_request:
-    branches:
-      - disabled
-#      - main
-#      - '[1-9]+.[0-9]+.x'
+  workflow_dispatch:
 jobs:
   build:
-    if: github.repository != 'micronaut-projects/micronaut-project-template'
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        java: ['11', '17']
+    permissions:
+      checks: write
+      contents: read
+    env:
+      TESTCONTAINERS_RYUK_DISABLED: true
     steps:
       # https://github.com/actions/virtual-environments/issues/709
+      - name: Remove system JDKs
+        run: |
+          sudo rm -rf /usr/lib/jvm/*
+          unset JAVA_HOME
+          export PATH=$(echo "$PATH" | tr ':' '\n' | grep -v '/usr/lib/jvm' | paste -sd:)
+
       - name: Free disk space
         run: |
           sudo rm -rf "/usr/local/share/boost"
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          sudo rm -rf "/opt/ghc"
+          sudo rm -rf "/usr/share/dotnet"
+          sudo rm -rf "/usr/local/lib/android"
           sudo apt-get clean
           df -h
-      - uses: actions/checkout@v2
-      - uses: actions/cache@v2.1.6
+
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          path: ~/.gradle/caches
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-      - name: Set up JDK
-        uses: actions/setup-java@v2
+          fetch-depth: 0
+
+      - name: Setup GraalVM CE
+        uses: graalvm/setup-graalvm@bef4b0e916c7dd079bf60fb95d49139f67e32c5f # v1
         with:
-          distribution: 'adopt'
-          java-version: ${{ matrix.java }}
+          distribution: 'graalvm'
+          java-version: '25'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6
+
       - name: Optional setup step
-        env:
-          GRADLE_ENTERPRISE_ACCESS_KEY: ${{ secrets.GRADLE_ENTERPRISE_ACCESS_KEY }}
         run: |
-          [ -f ./setup.sh ] && ./setup.sh || true
+          [ -f ./setup.sh ] && ./setup.sh || [ ! -f ./setup.sh ]
+
       - name: Build with Gradle
-        run: |
-          # Awful hack for kapt and JDK 17. See https://youtrack.jetbrains.com/issue/KT-45545
-          if [ ${{ matrix.java }} == 17 ]; then export GRADLE_OPTS="-Dorg.gradle.jvmargs=--illegal-access=permit"; fi
-          ./gradlew tck-runner:fullTckTest --no-daemon --continue
         env:
-          TESTCONTAINERS_RYUK_DISABLED: true
-          GRADLE_ENTERPRISE_ACCESS_KEY: ${{ secrets.GRADLE_ENTERPRISE_ACCESS_KEY }}
-#      - name: Publish Test Report
-#        if: always()
-#        uses: mikepenz/action-junit-report@v2
-#        with:
-#          check_name: Java CI / Test Report (${{ matrix.java }})
-#          report_paths: '**/build/test-results/test/TEST-*.xml'
+          DEVELOCITY_ACCESS_KEY: ${{ secrets.GRADLE_ENTERPRISE_ACCESS_KEY }}
+          DEVELOCITY_CACHE_USERNAME: ${{ secrets.GRADLE_ENTERPRISE_CACHE_USERNAME }}
+          DEVELOCITY_CACHE_PASSWORD: ${{ secrets.GRADLE_ENTERPRISE_CACHE_PASSWORD }}
+          GH_TOKEN_PUBLIC_REPOS_READONLY: ${{ secrets.GH_TOKEN_PUBLIC_REPOS_READONLY }}
+          GH_USERNAME: ${{ secrets.GH_USERNAME }}
+        run: |
+          ./gradlew :micronaut-tck-runner:fullTckTest --no-daemon --continue
+
+      - name: Publish Test Report
+        if: always()
+        uses: mikepenz/action-junit-report@bccf2e31636835cf0874589931c4116687171386 # v6
+        with:
+          check_name: Full TCK run / Test Report
+          report_paths: '**/build/test-results/*/TEST-*.xml'
+          check_retries: 'true'

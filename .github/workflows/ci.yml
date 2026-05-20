@@ -10,13 +10,11 @@ on:
       - '[0-9]+.[0-9]+.x'
 jobs:
   build:
+    name: Build / JDK 25
     runs-on: ubuntu-latest
     permissions:
       checks: write
       contents: read
-    strategy:
-      matrix:
-        java: ['17', '21', '25']
     env:
       TESTCONTAINERS_RYUK_DISABLED: true
     steps:
@@ -63,7 +61,7 @@ jobs:
         uses: graalvm/setup-graalvm@bef4b0e916c7dd079bf60fb95d49139f67e32c5f # v1
         with:
           distribution: 'graalvm'
-          java-version: ${{ matrix.java }}
+          java-version: '25'
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Gradle
@@ -87,12 +85,12 @@ jobs:
         if: always()
         uses: mikepenz/action-junit-report@bccf2e31636835cf0874589931c4116687171386 # v6
         with:
-          check_name: Java CI / Test Report (${{ matrix.java }})
+          check_name: Java CI / Test Report (25)
           report_paths: '**/build/test-results/test/TEST-*.xml'
           check_retries: 'true'
 
       - name: Upload documentation
-        if: success() && github.event_name == 'push' && matrix.java == '25'
+        if: success() && github.event_name == 'push'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: docs-site
@@ -126,13 +124,25 @@ jobs:
 
           docs_branch="gh-pages"
           docs_dir="$(mktemp -d)"
-          repository_url="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          repository_url="https://github.com/${GITHUB_REPOSITORY}.git"
+          askpass="$(mktemp)"
+
+          cat > "${askpass}" <<'EOF'
+          #!/usr/bin/env sh
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *Password*) printf '%s\n' "${GH_TOKEN}" ;;
+            *) printf '\n' ;;
+          esac
+          EOF
+          chmod 700 "${askpass}"
+          trap 'rm -f "${askpass}"' EXIT
 
           git config --global user.email "${GITHUB_ACTOR}@users.noreply.github.com"
           git config --global user.name "${GITHUB_ACTOR}"
 
-          if git ls-remote --exit-code --heads "${repository_url}" "${docs_branch}" > /dev/null 2>&1; then
-            git clone --depth 1 --branch "${docs_branch}" "${repository_url}" "${docs_dir}"
+          if GIT_ASKPASS="${askpass}" GIT_TERMINAL_PROMPT=0 git ls-remote --exit-code --heads "${repository_url}" "${docs_branch}" > /dev/null 2>&1; then
+            GIT_ASKPASS="${askpass}" GIT_TERMINAL_PROMPT=0 git clone --depth 1 --branch "${docs_branch}" "${repository_url}" "${docs_dir}"
           else
             git init "${docs_dir}"
             git -C "${docs_dir}" checkout -b "${docs_branch}"
@@ -148,5 +158,5 @@ jobs:
             echo "No documentation changes to publish."
           else
             git -C "${docs_dir}" commit -m "Deploy docs for ${GITHUB_SHA}"
-            git -C "${docs_dir}" push origin "${docs_branch}"
+            GIT_ASKPASS="${askpass}" GIT_TERMINAL_PROMPT=0 git -C "${docs_dir}" push origin "${docs_branch}"
           fi

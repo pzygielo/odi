@@ -63,6 +63,8 @@ Generated: ${generated_at}
 
 ODI is validating CDI Lite compatibility only. This evidence does not claim CDI Full compatibility.
 
+ODI currently targets Java 25+. This evidence was collected on JDK ${java_version}; no Java 17 or Java 21 evidence is claimed.
+
 Excluded TestNG groups: \`cdi-full\`, \`integration\`, \`javaee-full\`, \`se\`.
 
 ## Test Results
@@ -98,7 +100,7 @@ Excluded TestNG groups: \`cdi-full\`, \`integration\`, \`javaee-full\`, \`se\`.
 - Workflow run: ${workflow_url}
 - Runner OS: ${RUNNER_OS:-local}
 - Runner architecture: ${RUNNER_ARCH:-unknown}
-- Java matrix version: ${java_version}
+- Java version: ${java_version}
 
 \`\`\`
 ${java_runtime}
@@ -137,6 +139,7 @@ cat > "${index_file}" <<EOF
   <div class="notice">
     <strong>Scope:</strong> ODI is validating CDI Lite compatibility only. This evidence does not claim CDI Full compatibility.
   </div>
+  <p>ODI currently targets Java 25+. This evidence was collected on JDK ${java_version}; no Java 17 or Java 21 evidence is claimed.</p>
 
   <h2>Test Results</h2>
   <table>
@@ -174,7 +177,7 @@ cat > "${index_file}" <<EOF
     <li>Workflow run: <a href="${workflow_url}">${workflow_url}</a></li>
     <li>Runner OS: ${RUNNER_OS:-local}</li>
     <li>Runner architecture: ${RUNNER_ARCH:-unknown}</li>
-    <li>Java matrix version: ${java_version}</li>
+    <li>Java version: ${java_version}</li>
   </ul>
   <pre><code>${java_runtime}</code></pre>
 

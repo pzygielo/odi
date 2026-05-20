@@ -1,12 +1,17 @@
-name: Full TCK run
+name: CDI Lite TCK run
 on:
   workflow_dispatch:
 jobs:
-  build:
+  tck:
+    name: CDI Lite TCK / JDK ${{ matrix.java }}
     runs-on: ubuntu-latest
     permissions:
       checks: write
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['17', '21', '25']
     env:
       TESTCONTAINERS_RYUK_DISABLED: true
     steps:
@@ -31,6 +36,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Resolve Micronaut Core checkout cache key
         id: micronaut_core
@@ -52,7 +58,7 @@ jobs:
         uses: graalvm/setup-graalvm@bef4b0e916c7dd079bf60fb95d49139f67e32c5f # v1
         with:
           distribution: 'graalvm'
-          java-version: '25'
+          java-version: ${{ matrix.java }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Gradle
@@ -70,12 +76,135 @@ jobs:
           GH_TOKEN_PUBLIC_REPOS_READONLY: ${{ secrets.GH_TOKEN_PUBLIC_REPOS_READONLY }}
           GH_USERNAME: ${{ secrets.GH_USERNAME }}
         run: |
+          set -euo pipefail
           ./gradlew :micronaut-tck-runner:fullTckTest --no-daemon --continue
+
+      - name: Collect CDI Lite TCK evidence
+        if: always()
+        run: |
+          bash .github/scripts/collect-cdi-lite-tck-evidence.sh "${{ matrix.java }}"
 
       - name: Publish Test Report
         if: always()
         uses: mikepenz/action-junit-report@bccf2e31636835cf0874589931c4116687171386 # v6
         with:
-          check_name: Full TCK run / Test Report
-          report_paths: '**/build/test-results/*/TEST-*.xml'
+          check_name: CDI Lite TCK run / Test Report (${{ matrix.java }})
+          report_paths: 'tck-runner/build/test-results/fullTckTest/TEST-*.xml'
           check_retries: 'true'
+
+      - name: Upload CDI Lite TCK evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cdi-lite-tck-jdk-${{ matrix.java }}
+          path: build/tck-evidence/jdk-${{ matrix.java }}
+          if-no-files-found: error
+
+  publish-results:
+    name: Publish CDI Lite TCK results
+    needs: tck
+    if: always() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Download CDI Lite TCK evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: cdi-lite-tck-jdk-*
+          path: downloaded-tck-results
+          merge-multiple: false
+
+      - name: Build CDI Lite TCK results index
+        run: |
+          set -euo pipefail
+
+          run_results_dir="pages-tck-results/${GITHUB_RUN_ID}"
+          mkdir -p "${run_results_dir}"
+
+          found=false
+          for artifact_dir in downloaded-tck-results/cdi-lite-tck-jdk-*; do
+            [ -d "${artifact_dir}" ] || continue
+            found=true
+            artifact_name="$(basename "${artifact_dir}")"
+            java_version="${artifact_name#cdi-lite-tck-jdk-}"
+            mkdir -p "${run_results_dir}/jdk-${java_version}"
+            cp -R "${artifact_dir}/." "${run_results_dir}/jdk-${java_version}/"
+          done
+
+          if [ "${found}" != "true" ]; then
+            echo "No CDI Lite TCK evidence artifacts were downloaded." >&2
+            exit 1
+          fi
+
+          for expected_java_version in 17 21 25; do
+            if [ ! -f "${run_results_dir}/jdk-${expected_java_version}/index.html" ]; then
+              echo "Missing CDI Lite TCK evidence for JDK ${expected_java_version}." >&2
+              exit 1
+            fi
+          done
+
+          cat > "${run_results_dir}/index.html" <<EOF
+          <!doctype html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>ODI CDI Lite TCK Results</title>
+            <style>
+              body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.5; max-width: 960px; margin: 2rem auto; padding: 0 1rem; color: #1f2933; }
+              code { background: #f5f7fa; border-radius: 4px; padding: 0.1rem 0.25rem; }
+              .notice { border-left: 4px solid #d64545; background: #fff5f5; padding: 0.75rem 1rem; }
+            </style>
+          </head>
+          <body>
+            <h1>ODI CDI Lite TCK Results</h1>
+            <p>Workflow run: <a href="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}">${GITHUB_RUN_ID}</a></p>
+            <div class="notice">
+              <strong>Scope:</strong> ODI is validating CDI Lite compatibility only. These results do not claim CDI Full compatibility.
+            </div>
+            <p>Excluded TestNG groups: <code>cdi-full</code>, <code>integration</code>, <code>javaee-full</code>, <code>se</code>.</p>
+            <ul>
+              <li><a href="./jdk-17/">JDK 17 results</a></li>
+              <li><a href="./jdk-21/">JDK 21 results</a></li>
+              <li><a href="./jdk-25/">JDK 25 results</a></li>
+            </ul>
+          </body>
+          </html>
+          EOF
+
+      - name: Publish CDI Lite TCK results to Github Pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          docs_branch="gh-pages"
+          docs_dir="$(mktemp -d)"
+          repository_url="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          target_dir="${docs_dir}/tck-results/${GITHUB_RUN_ID}"
+
+          git config --global user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+          git config --global user.name "${GITHUB_ACTOR}"
+
+          if git ls-remote --exit-code --heads "${repository_url}" "${docs_branch}" > /dev/null 2>&1; then
+            git clone --depth 1 --branch "${docs_branch}" "${repository_url}" "${docs_dir}"
+          else
+            git init "${docs_dir}"
+            git -C "${docs_dir}" checkout -b "${docs_branch}"
+            git -C "${docs_dir}" remote add origin "${repository_url}"
+          fi
+
+          rm -rf "${target_dir}"
+          mkdir -p "${target_dir}"
+          cp -R "pages-tck-results/${GITHUB_RUN_ID}/." "${target_dir}/"
+          touch "${docs_dir}/.nojekyll"
+
+          git -C "${docs_dir}" add -A
+          if git -C "${docs_dir}" diff --cached --quiet; then
+            echo "No CDI Lite TCK result changes to publish."
+          else
+            git -C "${docs_dir}" commit -m "Deploy CDI Lite TCK results for ${GITHUB_RUN_ID}"
+            git -C "${docs_dir}" push origin "${docs_branch}"
+          fi

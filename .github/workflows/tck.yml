@@ -178,6 +178,7 @@ jobs:
           docs_dir="$(mktemp -d)"
           repository_url="https://github.com/${GITHUB_REPOSITORY}.git"
           target_dir="${docs_dir}/tck-results/${GITHUB_RUN_ID}"
+          latest_dir="${docs_dir}/tck-results/latest"
           askpass="$(mktemp)"
 
           cat > "${askpass}" <<'EOF'
@@ -205,6 +206,11 @@ jobs:
           rm -rf "${target_dir}"
           mkdir -p "${target_dir}"
           cp -R "pages-tck-results/${GITHUB_RUN_ID}/." "${target_dir}/"
+
+          rm -rf "${latest_dir}"
+          mkdir -p "${latest_dir}"
+          cp -R "pages-tck-results/${GITHUB_RUN_ID}/." "${latest_dir}/"
+
           touch "${docs_dir}/.nojekyll"
 
           git -C "${docs_dir}" add -A

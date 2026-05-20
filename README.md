@@ -8,6 +8,8 @@ The ODI guide is published at <https://eclipse-ee4j.github.io/odi/guide/>.
 
 The CDI Lite TCK passes with CDI Full exclusions only.
 
+The latest CDI Lite TCK compatibility evidence is published at <https://eclipse-ee4j.github.io/odi/tck-results/latest/>. Each CI run is also retained under its immutable workflow run ID, for example `/tck-results/<workflow-run-id>/`.
+
 ## Micronaut Core dependency
 
 ODI currently requires unmerged Micronaut Core changes from [micronaut-projects/micronaut-core#12678](https://github.com/micronaut-projects/micronaut-core/pull/12678). That PR adds the CDI integration hooks used by the ODI processor and runtime.

@@ -7,6 +7,8 @@ cd "${repo_root}"
 
 evidence_dir="build/tck-evidence/jdk-${java_version}"
 result_dir="tck-runner/build/test-results/fullTckTest"
+signature_dir="tck-runner/build/reports/cdi-signature-test"
+signature_result_dir="tck-runner/build/test-results/cdiSignatureTest"
 summary_file="${evidence_dir}/summary.md"
 index_file="${evidence_dir}/index.html"
 
@@ -54,6 +56,106 @@ if [ -d "${result_dir}" ]; then
   done
 fi
 
+property_value() {
+  local file="$1"
+  local key="$2"
+  sed -n "s/^${key}=//p" "${file}" | head -1
+}
+
+signature_status="not-run"
+signature_tests="0"
+signature_failures="0"
+signature_errors="0"
+signature_skipped="0"
+signature_tool="unavailable"
+signature_file="unavailable"
+signature_source="unavailable"
+signature_boot_cp="unavailable"
+signature_packages="unavailable"
+signature_api_artifacts="unavailable"
+signature_report="unavailable"
+
+rm -rf "${evidence_dir}/signature-test"
+if [ -d "${signature_dir}" ]; then
+  mkdir -p "${evidence_dir}/signature-test"
+  for signature_artifact in \
+    signature-test.properties \
+    signature-test-report.txt \
+    cdi-api-jdk17.sig; do
+    if [ -f "${signature_dir}/${signature_artifact}" ]; then
+      cp "${signature_dir}/${signature_artifact}" "${evidence_dir}/signature-test/${signature_artifact}"
+    fi
+  done
+fi
+
+if [ -d "${signature_result_dir}" ]; then
+  mkdir -p "${evidence_dir}/signature-test/junit-xml"
+  for result_file in "${signature_result_dir}"/TEST-*.xml; do
+    [ -f "${result_file}" ] || continue
+    perl -0pe 's#<system-out>.*?</system-out>\n?##gs; s#<system-err>.*?</system-err>\n?##gs' \
+      "${result_file}" > "${evidence_dir}/signature-test/junit-xml/$(basename "${result_file}")"
+  done
+fi
+
+if [ -f "${signature_dir}/signature-test.properties" ]; then
+  signature_status="$(property_value "${signature_dir}/signature-test.properties" status)"
+  signature_tests="$(property_value "${signature_dir}/signature-test.properties" tests)"
+  signature_failures="$(property_value "${signature_dir}/signature-test.properties" failures)"
+  signature_errors="$(property_value "${signature_dir}/signature-test.properties" errors)"
+  signature_skipped="$(property_value "${signature_dir}/signature-test.properties" skipped)"
+  signature_tool="$(property_value "${signature_dir}/signature-test.properties" sigtestTool)"
+  signature_file="$(property_value "${signature_dir}/signature-test.properties" signatureFile)"
+  signature_source="$(property_value "${signature_dir}/signature-test.properties" signatureSource)"
+  signature_boot_cp="$(property_value "${signature_dir}/signature-test.properties" bootCpRelease)"
+  signature_packages="$(property_value "${signature_dir}/signature-test.properties" packages)"
+  signature_api_artifacts="$(property_value "${signature_dir}/signature-test.properties" apiArtifacts)"
+  signature_report="$(property_value "${signature_dir}/signature-test.properties" report)"
+fi
+
+if [ -d "${evidence_dir}/signature-test" ]; then
+  cat > "${evidence_dir}/signature-test/index.html" <<EOF
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ODI CDI Lite Signature-Test Evidence - JDK ${java_version}</title>
+  <style>
+    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.5; max-width: 960px; margin: 2rem auto; padding: 0 1rem; color: #1f2933; }
+    code, pre { background: #f5f7fa; border-radius: 4px; }
+    code { padding: 0.1rem 0.25rem; }
+    table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+    th, td { border: 1px solid #d9e2ec; padding: 0.5rem; text-align: left; }
+    th { background: #f5f7fa; }
+  </style>
+</head>
+<body>
+  <h1>ODI CDI Lite Signature-Test Evidence - JDK ${java_version}</h1>
+  <table>
+    <tr><th>Status</th><th>Tests</th><th>Failures</th><th>Errors</th><th>Skipped</th></tr>
+    <tr><td>${signature_status}</td><td>${signature_tests}</td><td>${signature_failures}</td><td>${signature_errors}</td><td>${signature_skipped}</td></tr>
+  </table>
+  <ul>
+    <li>Tool: ${signature_tool}</li>
+    <li>TCK signature file: ${signature_file}</li>
+    <li>Signature source: ${signature_source}</li>
+    <li>Boot class path release: ${signature_boot_cp}</li>
+    <li>Checked packages: <code>${signature_packages}</code></li>
+    <li>API artifacts: <code>${signature_api_artifacts}</code></li>
+  </ul>
+  <p>The signature file is extracted dynamically from the resolved Jakarta CDI TCK artifact during the CI run.</p>
+  <h2>Artifacts</h2>
+  <ul>
+    <li><a href="./${signature_report}">Signature-test report</a></li>
+    <li><a href="./signature-test.properties">Signature-test metadata</a></li>
+    <li><a href="./${signature_file}">TCK signature file</a></li>
+    <li><a href="./junit-xml/TEST-cdi-signature-test.xml">JUnit XML</a></li>
+  </ul>
+</body>
+</html>
+EOF
+fi
+
 cat > "${summary_file}" <<EOF
 # ODI CDI Lite TCK Results - JDK ${java_version}
 
@@ -93,7 +195,24 @@ Excluded TestNG groups: \`cdi-full\`, \`integration\`, \`javaee-full\`, \`se\`.
 
 ## Additional Certification Requirements
 
-- Signature-test evidence: pending; this workflow does not claim signature tests passed.
+- Signature-test evidence: ${signature_status}
+
+## Signature Test
+
+- Status: ${signature_status}
+- Tests: ${signature_tests}
+- Failures: ${signature_failures}
+- Errors: ${signature_errors}
+- Skipped: ${signature_skipped}
+- Tool: ${signature_tool}
+- TCK signature file: ${signature_file}
+- Signature source: ${signature_source}
+- Boot class path release: ${signature_boot_cp}
+- Checked packages: ${signature_packages}
+- API artifacts: ${signature_api_artifacts}
+- Report: ./signature-test/${signature_report}
+
+The signature file is extracted dynamically from the resolved Jakarta CDI TCK artifact during the CI run.
 
 ## Environment
 
@@ -109,6 +228,7 @@ ${java_runtime}
 ## Artifacts
 
 - Sanitized JUnit XML: ./junit-xml/
+- Signature-test evidence: ./signature-test/
 
 Raw Gradle console output and unsanitized Gradle reports are intentionally not published because the build runs with secret-backed environment variables.
 EOF
@@ -170,7 +290,23 @@ cat > "${index_file}" <<EOF
   </ul>
 
   <h2>Additional Certification Requirements</h2>
-  <p>Signature-test evidence is pending; this workflow does not claim signature tests passed.</p>
+  <p>Signature-test evidence: ${signature_status}</p>
+
+  <h2>Signature Test</h2>
+  <table>
+    <tr><th>Status</th><th>Tests</th><th>Failures</th><th>Errors</th><th>Skipped</th></tr>
+    <tr><td>${signature_status}</td><td>${signature_tests}</td><td>${signature_failures}</td><td>${signature_errors}</td><td>${signature_skipped}</td></tr>
+  </table>
+  <ul>
+    <li>Tool: ${signature_tool}</li>
+    <li>TCK signature file: ${signature_file}</li>
+    <li>Signature source: ${signature_source}</li>
+    <li>Boot class path release: ${signature_boot_cp}</li>
+    <li>Checked packages: <code>${signature_packages}</code></li>
+    <li>API artifacts: <code>${signature_api_artifacts}</code></li>
+    <li>Report: <a href="./signature-test/${signature_report}">signature-test/${signature_report}</a></li>
+  </ul>
+  <p>The signature file is extracted dynamically from the resolved Jakarta CDI TCK artifact during the CI run.</p>
 
   <h2>Environment</h2>
   <ul>
@@ -185,6 +321,7 @@ cat > "${index_file}" <<EOF
   <ul>
     <li><a href="./summary.md">Markdown summary</a></li>
     <li><a href="./junit-xml/">Sanitized JUnit XML results</a></li>
+    <li><a href="./signature-test/">Signature-test evidence</a></li>
   </ul>
   <p>Raw Gradle console output and unsanitized Gradle reports are intentionally not published because the build runs with secret-backed environment variables.</p>
 </body>

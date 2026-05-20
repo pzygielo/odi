@@ -73,7 +73,7 @@ jobs:
           GH_USERNAME: ${{ secrets.GH_USERNAME }}
         run: |
           set -euo pipefail
-          ./gradlew :micronaut-tck-runner:fullTckTest --no-daemon --continue
+          ./gradlew :micronaut-tck-runner:fullTckTest :micronaut-tck-runner:cdiSignatureTest --no-daemon --continue
 
       - name: Collect CDI Lite TCK evidence
         if: always()
@@ -85,7 +85,9 @@ jobs:
         uses: mikepenz/action-junit-report@bccf2e31636835cf0874589931c4116687171386 # v6
         with:
           check_name: CDI Lite TCK run / Test Report (25)
-          report_paths: 'tck-runner/build/test-results/fullTckTest/TEST-*.xml'
+          report_paths: |
+            tck-runner/build/test-results/fullTckTest/TEST-*.xml
+            tck-runner/build/test-results/cdiSignatureTest/TEST-*.xml
           check_retries: 'true'
 
       - name: Upload CDI Lite TCK evidence

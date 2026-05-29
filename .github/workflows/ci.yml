@@ -81,6 +81,43 @@ jobs:
         run: |
           ./gradlew check docs --no-daemon --continue
 
+      - name: Prepare publishing secrets
+        if: success() && github.event_name == 'push'
+        env:
+          CENTRAL_SONATYPE_TOKEN_USERNAME: ${{ secrets.CENTRAL_SONATYPE_TOKEN_USERNAME }}
+          CENTRAL_SONATYPE_TOKEN_PASSWORD: ${{ secrets.CENTRAL_SONATYPE_TOKEN_PASSWORD }}
+          GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          project_version="$(sed -n 's/^projectVersion=//p' gradle.properties | head -n 1)"
+          if [ "${project_version##*-}" != "SNAPSHOT" ]; then
+            echo "PUBLISH_SNAPSHOT=false" >> "${GITHUB_ENV}"
+            exit 0
+          fi
+          gpg_file="${RUNNER_TEMP}/gpg-private-key.asc"
+          install -m 600 /dev/null "${gpg_file}"
+          if [ -n "${GPG_PRIVATE_KEY}" ]; then
+            printf '%s' "${GPG_PRIVATE_KEY}" > "${gpg_file}"
+          fi
+          {
+            echo "GPG_FILE=${gpg_file}"
+            echo "SONATYPE_USERNAME=${CENTRAL_SONATYPE_TOKEN_USERNAME}"
+            echo "SONATYPE_PASSWORD=${CENTRAL_SONATYPE_TOKEN_PASSWORD}"
+            echo "GPG_KEY_ID=${GPG_KEY_ID}"
+            echo "GPG_PASSWORD=${GPG_PASSPHRASE}"
+            echo "PUBLISH_SNAPSHOT=true"
+          } >> "${GITHUB_ENV}"
+
+      - name: Publish snapshot
+        if: success() && github.event_name == 'push' && env.PUBLISH_SNAPSHOT == 'true'
+        run: |
+          set -euo pipefail
+          test -n "${SONATYPE_USERNAME}"
+          test -n "${SONATYPE_PASSWORD}"
+          ./gradlew publishAllPublicationsToCentralSnapshotsRepository --no-daemon --continue
+
       - name: Publish Test Report
         if: always()
         uses: mikepenz/action-junit-report@bccf2e31636835cf0874589931c4116687171386 # v6

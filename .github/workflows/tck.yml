@@ -73,7 +73,7 @@ jobs:
           GH_USERNAME: ${{ secrets.GH_USERNAME }}
         run: |
           set -euo pipefail
-          ./gradlew :micronaut-tck-runner:fullTckTest :micronaut-tck-runner:cdiSignatureTest --no-daemon --continue
+          ./gradlew :micronaut-odi-tck-runner:fullTckTest :micronaut-odi-tck-runner:cdiSignatureTest --no-daemon --continue
 
       - name: Collect CDI Lite TCK evidence
         if: always()

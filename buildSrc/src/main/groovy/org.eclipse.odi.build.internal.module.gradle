@@ -1,4 +1,21 @@
 plugins {
     id "org.eclipse.odi.build.internal.base"
     id "groovy"
+    id "io.micronaut.build.internal.publishing"
+}
+
+publishing {
+    repositories {
+        maven {
+            name = "CentralSnapshots"
+            url = uri("https://central.sonatype.com/repository/maven-snapshots/")
+            mavenContent {
+                snapshotsOnly()
+            }
+            credentials {
+                username = providers.environmentVariable("SONATYPE_USERNAME").orNull
+                password = providers.environmentVariable("SONATYPE_PASSWORD").orNull
+            }
+        }
+    }
 }

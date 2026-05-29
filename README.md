@@ -35,6 +35,6 @@ dependencies {
 
 ```bash
 ./gradlew :docs-examples:cdi-lite-java:test
-./gradlew :micronaut-tck-runner:test
+./gradlew :micronaut-odi-tck-runner:test
 ./gradlew publishGuide
 ```

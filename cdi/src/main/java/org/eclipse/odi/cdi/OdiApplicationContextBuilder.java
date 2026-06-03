@@ -15,20 +15,7 @@
  */
 package org.eclipse.odi.cdi;
 
-import io.micronaut.context.BeanResolutionCustomizer;
-import io.micronaut.context.BeanRegistration;
-import io.micronaut.context.BeanResolutionContext;
 import io.micronaut.context.DefaultApplicationContextBuilder;
-import io.micronaut.core.reflect.ReflectionUtils;
-import io.micronaut.core.type.Argument;
-import io.micronaut.inject.BeanDefinition;
-import io.micronaut.inject.QualifiedBeanType;
-import jakarta.enterprise.context.NormalScope;
-import jakarta.enterprise.inject.TransientReference;
-
-import java.lang.reflect.Type;
-import java.util.Optional;
-import java.util.Set;
 
 /**
  * ODI specific {@link DefaultApplicationContextBuilder}.
@@ -37,75 +24,5 @@ public final class OdiApplicationContextBuilder extends DefaultApplicationContex
     public OdiApplicationContextBuilder() {
         deduceEnvironment(false);
         banner(false);
-        allowEmptyProviders(true);
-        customScopeRegistry(OdiCustomScopeRegistry::new);
-        beanResolutionCustomizer(new BeanResolutionCustomizer() {
-            @Override
-            public boolean shouldResolveArrayAsBean(Argument<?> injectionPoint) {
-                return true;
-            }
-
-            @Override
-            public Argument<?> resolveBeanLookupArgument(Argument<?> beanType) {
-                Class<?> type = beanType.getType();
-                if (type.isPrimitive()) {
-                    Class<?> wrapperType = ReflectionUtils.getWrapperType(type);
-                    return Argument.of(wrapperType, beanType.getName(), beanType.getAnnotationMetadata(), beanType.getTypeParameters());
-                }
-                return beanType;
-            }
-
-            @Override
-            public Optional<?> resolveNullBean(Argument<?> requestedBeanType, Argument<?> resolvedBeanType, BeanDefinition<?> beanDefinition) {
-                Class<?> requestedType = requestedBeanType.getType();
-                if (requestedType.isPrimitive() && resolvedBeanType.getType() == ReflectionUtils.getWrapperType(requestedType)) {
-                    return Optional.of(primitiveDefaultValue(requestedType));
-                }
-                return Optional.empty();
-            }
-
-            @Override
-            public boolean shouldDestroyDependentBeanAfterResolution(BeanResolutionContext resolutionContext, BeanRegistration<?> beanRegistration) {
-                return resolutionContext.getPath().currentSegment()
-                        .map(segment -> segment.getArgument().getAnnotationMetadata().hasAnnotation(TransientReference.class))
-                        .orElse(false);
-            }
-
-            @Override
-            public boolean shouldInitializeBean(BeanResolutionContext resolutionContext, BeanDefinition<?> beanDefinition, Object bean) {
-                return !(beanDefinition.isProxy() && beanDefinition.getAnnotationMetadata().hasStereotype(NormalScope.class));
-            }
-
-            @Override
-            public boolean shouldPreserveLazyProxyTargetResolutionPath(BeanResolutionContext resolutionContext, BeanDefinition<?> proxyBeanDefinition) {
-                return !proxyBeanDefinition.getAnnotationMetadata().hasStereotype(NormalScope.class);
-            }
-
-            @Override
-            public boolean isCandidateBean(Argument<?> beanType, QualifiedBeanType<?> candidate) {
-                Type requiredType = OdiTypeUtils.getRequiredType(beanType);
-                if (requiredType != null) {
-                    Set<Type> beanTypes = OdiTypeUtils.getBeanTypes(candidate.getAnnotationMetadata(), candidate.getBeanType());
-                    if (!beanTypes.isEmpty()) {
-                        return OdiTypeUtils.matchesBeanType(requiredType, beanTypes);
-                    }
-                }
-                return candidate.isCandidateBean(beanType);
-            }
-        });
-    }
-
-    private static Object primitiveDefaultValue(Class<?> type) {
-        return switch (type.getName()) {
-            case "boolean" -> false;
-            case "byte" -> (byte) 0;
-            case "short" -> (short) 0;
-            case "int" -> 0;
-            case "long" -> 0L;
-            case "float" -> 0.0f;
-            case "double" -> 0.0d;
-            case "char" -> '\0';
-            default -> throw new IllegalArgumentException("Not a primitive type: " + type.getName());
-        };
     }
 }

@@ -16,6 +16,10 @@
 
 package org.eclipse.odi.cdi;
 
+import io.micronaut.context.ApplicationContext;
+import io.micronaut.context.BeanContextConfiguration;
+import io.micronaut.context.BeanResolutionCustomizer;
+import io.micronaut.core.type.Argument;
 import jakarta.enterprise.inject.Instance;
 import jakarta.enterprise.inject.literal.NamedLiteral;
 import jakarta.enterprise.inject.se.SeContainer;
@@ -35,6 +39,16 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class OdiSeContainerInitializerTest {
+
+    @Test
+    void testOdiContextConfigurationIsAppliedAutomatically() {
+        BeanContextConfiguration configuration = (BeanContextConfiguration) ApplicationContext.builder();
+        BeanResolutionCustomizer beanResolutionCustomizer = configuration.beanResolutionCustomizer();
+
+        assertTrue(configuration.isAllowEmptyProviders());
+        assertNotNull(configuration.customScopeRegistryFactory());
+        assertTrue(beanResolutionCustomizer.shouldResolveArrayAsBean(Argument.of(String[].class)));
+    }
 
     @Test
     void testSeContainerInitializer() {

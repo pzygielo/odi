@@ -115,6 +115,9 @@ final class AnnotatedConstructAnnotationTarget implements AnnotationTarget {
 
     @Override
     public boolean hasAnnotation(Class<? extends Annotation> annotationType) {
+        if (annotatedConstruct == null) {
+            return false;
+        }
         Annotation annotation = annotatedConstruct.getAnnotation(annotationType);
         if (annotation == null) {
             return false;

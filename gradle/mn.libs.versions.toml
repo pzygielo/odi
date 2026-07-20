@@ -1,6 +1,6 @@
 [versions]
-micronaut = "5.0.0-SNAPSHOT"
-micronaut-test = "5.0.0-M6"
+micronaut = "5.1.7"
+micronaut-test = "5.1.0"
 logback = "1.5.32"
 slf4j = "2.0.17"
 

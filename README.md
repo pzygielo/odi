@@ -12,11 +12,7 @@ The latest CDI Lite TCK compatibility evidence is published at <https://eclipse-
 
 ## Micronaut Core dependency
 
-ODI currently requires unmerged Micronaut Core changes from [micronaut-projects/micronaut-core#12678](https://github.com/micronaut-projects/micronaut-core/pull/12678). That PR adds the CDI integration hooks used by the ODI processor and runtime.
-
-The Gradle build includes that Micronaut Core branch by default. `settings.gradle.kts` uses the `me.champeau.includegit` plugin to include `https://github.com/micronaut-projects/micronaut-core.git` at branch `cdi-5.1.x` as an included build named `micronaut-core`, then substitutes the required `io.micronaut:*` modules with projects from that included build.
-
-For local development, you can point the build at a local Micronaut Core checkout by setting `local.git.odi.micronaut-core` in `~/.gradle/gradle.properties` or by setting `LOCAL_GIT_MICRONAUT_CORE`. If no local checkout is configured, the git include is used. To disable the included Micronaut Core build entirely, run with `-Podi.include.micronaut.core=false`.
+ODI requires Micronaut Core 5.1.0 or above. The CDI integration hooks used by the ODI processor and runtime were added in [micronaut-projects/micronaut-core#12678](https://github.com/micronaut-projects/micronaut-core/pull/12678), which has been merged.
 
 ## Classpath shape
 

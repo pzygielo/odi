@@ -1,11 +1,6 @@
-import me.champeau.gradle.igp.gitRepositories
-import org.gradle.api.GradleException
-import org.gradle.api.initialization.ConfigurableIncludedBuild
-
 pluginManagement {
     plugins {
         id("io.micronaut.build.shared.settings") version providers.gradleProperty("micronautSharedSettingVersion").get()
-        id("me.champeau.includegit") version "0.3.2"
     }
     repositories {
         gradlePluginPortal()
@@ -14,7 +9,6 @@ pluginManagement {
 }
 
 plugins {
-    id("me.champeau.includegit")
     id("io.micronaut.build.shared.settings")
 }
 
@@ -26,97 +20,6 @@ micronautBuild {
     useStandardizedProjectNames = true
     nonStandardProjectPathPrefixes.add(":docs-examples")
     nonStandardProjectPathPrefixes.add(":docs-examples:")
-}
-
-fun booleanGradleProperty(name: String): Boolean? {
-    val value = providers.gradleProperty(name).orNull ?: return null
-    return value.toBooleanStrictOrNull()
-        ?: throw GradleException("Expected Gradle property '$name' to be 'true' or 'false' but got '$value'")
-}
-
-fun ConfigurableIncludedBuild.substituteMicronautCore() {
-    dependencySubstitution {
-        listOf(
-            "aop",
-            "buffer-netty",
-            "context",
-            "context-propagation",
-            "core",
-            "core-bom" to "micronaut-core-bom",
-            "core-processor",
-            "core-reactive",
-            "discovery-core",
-            "function",
-            "function-client",
-            "function-web",
-            "graal",
-            "http",
-            "http-client",
-            "http-client-core",
-            "http-client-jdk",
-            "http-netty",
-            "http-netty-http3",
-            "http-server",
-            "http-server-netty",
-            "http-server-tck",
-            "http-tck",
-            "http-validation",
-            "inject",
-            "inject-groovy",
-            "inject-groovy-test",
-            "inject-java",
-            "inject-java-helper",
-            "inject-java-helper2",
-            "inject-java-test",
-            "inject-kotlin",
-            "inject-kotlin-test",
-            "inject-test-utils",
-            "jackson-core",
-            "jackson-databind",
-            "json-core",
-            "management",
-            "messaging",
-            "module-info",
-            "module-info-runtime",
-            "retry",
-            "router",
-            "runtime",
-            "runtime-osx",
-            "websocket"
-        ).map { entry ->
-            when (entry) {
-                is Pair<*, *> -> entry.first.toString() to entry.second.toString()
-                else -> entry.toString() to "micronaut-$entry"
-            }
-        }.forEach { (_, moduleName) ->
-            substitute(module("io.micronaut:$moduleName")).using(project(":$moduleName"))
-        }
-    }
-}
-
-val includeMicronautCore = booleanGradleProperty("odi.include.micronaut.core") ?: true
-if (includeMicronautCore) {
-    val localMicronautCore = (providers.gradleProperty("local.git.odi.micronaut-core").orNull
-        ?: providers.environmentVariable("LOCAL_GIT_MICRONAUT_CORE").orNull)
-        ?.takeIf { it.isNotBlank() }
-    val localMicronautCoreDir = localMicronautCore?.let(::file)
-    if (localMicronautCoreDir?.isDirectory == true && localMicronautCoreDir.resolve(".git").exists()) {
-        includeBuild(localMicronautCoreDir) {
-            name = "micronaut-core"
-            substituteMicronautCore()
-        }
-    } else {
-        gitRepositories {
-            include("micronaut-core-cdi") {
-                uri.set("https://github.com/micronaut-projects/micronaut-core.git")
-                branch.set("cdi-5.1.x")
-                includeBuild {
-                    name = "micronaut-core"
-                    substituteMicronautCore()
-                }
-            }
-        }
-    }
 }
 
 dependencyResolutionManagement {

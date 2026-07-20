@@ -14,11 +14,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       RELEASE_VERSION: ${{ github.event.release.tag_name }}
-      SONATYPE_USERNAME: ${{ secrets.CENTRAL_SONATYPE_TOKEN_USERNAME }}
-      SONATYPE_PASSWORD: ${{ secrets.CENTRAL_SONATYPE_TOKEN_PASSWORD }}
-      GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
-      GPG_PASSWORD: ${{ secrets.GPG_PASSPHRASE }}
-      GPG_FILE: ${{ runner.temp }}/gpg-private-key.asc
     steps:
       - name: Check release tag
         run: |
@@ -39,6 +34,35 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+
+      - name: Prepare publishing secrets
+        if: success() && github.event_name == 'push'
+        env:
+          CENTRAL_SONATYPE_TOKEN_USERNAME: ${{ secrets.CENTRAL_SONATYPE_TOKEN_USERNAME }}
+          CENTRAL_SONATYPE_TOKEN_PASSWORD: ${{ secrets.CENTRAL_SONATYPE_TOKEN_PASSWORD }}
+          GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          project_version="$(sed -n 's/^projectVersion=//p' gradle.properties | head -n 1)"
+          if [ "${project_version##*-}" != "SNAPSHOT" ]; then
+            echo "PUBLISH_SNAPSHOT=false" >> "${GITHUB_ENV}"
+            exit 0
+          fi
+          gpg_file="${RUNNER_TEMP}/gpg-private-key.asc"
+          install -m 600 /dev/null "${gpg_file}"
+          if [ -n "${GPG_PRIVATE_KEY}" ]; then
+            printf '%s' "${GPG_PRIVATE_KEY}" > "${gpg_file}"
+          fi
+          {
+            echo "GPG_FILE=${gpg_file}"
+            echo "SONATYPE_USERNAME=${CENTRAL_SONATYPE_TOKEN_USERNAME}"
+            echo "SONATYPE_PASSWORD=${CENTRAL_SONATYPE_TOKEN_PASSWORD}"
+            echo "GPG_KEY_ID=${GPG_KEY_ID}"
+            echo "GPG_PASSWORD=${GPG_PASSPHRASE}"
+            echo "PUBLISH_SNAPSHOT=true"
+          } >> "${GITHUB_ENV}"
 
       - name: Import signing key
         run: |

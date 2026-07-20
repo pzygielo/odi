@@ -1,0 +1,76 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publish ${{ github.event.release.tag_name }}
+    if: startsWith(github.event.release.tag_name, 'v')
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_VERSION: ${{ github.event.release.tag_name }}
+      SONATYPE_USERNAME: ${{ secrets.CENTRAL_SONATYPE_TOKEN_USERNAME }}
+      SONATYPE_PASSWORD: ${{ secrets.CENTRAL_SONATYPE_TOKEN_PASSWORD }}
+      GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+      GPG_PASSWORD: ${{ secrets.GPG_PASSPHRASE }}
+      GPG_FILE: ${{ runner.temp }}/gpg-private-key.asc
+    steps:
+      - name: Check release tag
+        run: |
+          set -euo pipefail
+          [[ "${RELEASE_VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-(M|RC)[0-9]+$|^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Import signing key
+        run: |
+          set -euo pipefail
+          printf '%s' '${{ secrets.GPG_PRIVATE_KEY }}' > "${GPG_FILE}"
+          chmod 600 "${GPG_FILE}"
+
+      - name: Run checks and publish to Maven Central
+        run: |
+          set -euo pipefail
+          test -n "${SONATYPE_USERNAME}"
+          test -n "${SONATYPE_PASSWORD}"
+          ./gradlew publishToMavenCentral --publishing-type=AUTOMATIC \
+            -PprojectVersion="${RELEASE_VERSION#v}" \
+            --no-daemon --continue
+
+      - name: Generate documentation
+        run: ./gradlew docs -PprojectVersion="${RELEASE_VERSION#v}" --no-daemon
+
+      - name: Publish documentation to GitHub Pages
+        uses: micronaut-projects/github-pages-deploy-action@master
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: gh-pages
+          folder: build/docs
+          version: ${{ github.event.release.tag_name }}
+
+      - name: Package release artifacts
+        run: tar -czf "odi-${RELEASE_VERSION}.tar.gz" --exclude=.git .
+
+      - name: Upload release artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: odi-${{ github.event.release.tag_name }}.tar.gz

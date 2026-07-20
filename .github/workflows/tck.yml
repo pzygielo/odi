@@ -34,22 +34,6 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Resolve Micronaut Core checkout cache key
-        id: micronaut_core
-        run: |
-          set -euo pipefail
-          sha="$(git ls-remote https://github.com/micronaut-projects/micronaut-core.git refs/heads/cdi-5.1.x | cut -f1)"
-          test -n "${sha}"
-          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
-
-      - name: Cache Micronaut Core included build checkout
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
-        with:
-          path: checkouts/micronaut-core-cdi
-          key: ${{ runner.os }}-micronaut-core-cdi-${{ steps.micronaut_core.outputs.sha }}
-          restore-keys: |
-            ${{ runner.os }}-micronaut-core-cdi-
-
       - name: Setup GraalVM CE
         uses: graalvm/setup-graalvm@bef4b0e916c7dd079bf60fb95d49139f67e32c5f # v1
         with:

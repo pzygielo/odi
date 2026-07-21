@@ -71,9 +71,11 @@ jobs:
           set -euo pipefail
           test -n "${SONATYPE_USERNAME}"
           test -n "${SONATYPE_PASSWORD}"
-          GPG_KEY_ID="$(gpg --batch --keyid-format short --with-colons \
+          gpg_key_id="$(gpg --batch --keyid-format short --with-colons \
             --list-secret-keys | awk -F: '$1 == "sec" { print $5; exit }')" \
-          ./gradlew publishToMavenCentral --publishing-type=AUTOMATIC \
+          gpg_key_id="${gpg_key_id: -8}"
+          echo "Using signing key id with ${#gpg_key_id} characters"
+          GPG_KEY_ID="${gpg_key_id}" ./gradlew publishToMavenCentral --publishing-type=AUTOMATIC \
             -PprojectVersion="${RELEASE_VERSION#v}" \
             --no-daemon --continue
 

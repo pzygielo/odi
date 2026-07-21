@@ -67,6 +67,8 @@ jobs:
           echo "GPG_KEY_ID=${gpg_key_id}" >> "${GITHUB_ENV}"
 
       - name: Run checks and publish to Maven Central
+        env:
+          GPG_PASSWORD: ${{ secrets.GPG_PASSPHRASE }}
         run: |
           set -euo pipefail
           test -n "${SONATYPE_USERNAME}"

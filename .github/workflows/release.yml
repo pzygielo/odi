@@ -67,9 +67,9 @@ jobs:
             -Psigning.keyId="${gpg_key_id}" \
             -Psigning.password="${GPG_PASSWORD}" \
             -Psigning.secretKeyRingFile="${PWD}/secring.gpg" \
-            -Dsigning.keyId="${gpg_key_id}" \
-            -Dsigning.password="${GPG_PASSWORD}" \
-            -Dsigning.secretKeyRingFile="${PWD}/secring.gpg" \
+            -Dorg.gradle.project.signing.keyId="${gpg_key_id}" \
+            -Dorg.gradle.project.signing.password="${GPG_PASSWORD}" \
+            -Dorg.gradle.project.signing.secretKeyRingFile="${PWD}/secring.gpg" \
             --stacktrace --no-daemon --continue
 
       - name: Generate documentation

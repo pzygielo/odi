@@ -61,7 +61,7 @@ jobs:
           gpg --batch --pinentry-mode loopback --passphrase "${GPG_PASSPHRASE}" \
             --export-secret-keys --output secring.gpg
           chmod 600 secring.gpg
-          gpg_key_id="$(gpg --batch --with-colons --list-secret-keys \
+          gpg_key_id="$(gpg --batch --keyid-format short --with-colons --list-secret-keys \
             | awk -F: '$1 == "sec" { print $5; exit }')"
           test -n "${gpg_key_id}"
           echo "GPG_KEY_ID=${gpg_key_id}" >> "${GITHUB_ENV}"

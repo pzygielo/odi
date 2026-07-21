@@ -64,6 +64,9 @@ jobs:
           echo "Using signing key id with ${#gpg_key_id} characters"
           GPG_KEY_ID="${gpg_key_id}" ./gradlew publishToMavenCentral --publishing-type=AUTOMATIC \
             -PprojectVersion="${RELEASE_VERSION#v}" \
+            -Psigning.keyId="${gpg_key_id}" \
+            -Psigning.password="${GPG_PASSWORD}" \
+            -Psigning.secretKeyRingFile="${PWD}/secring.gpg" \
             --no-daemon --continue
 
       - name: Generate documentation

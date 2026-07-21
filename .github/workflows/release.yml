@@ -89,11 +89,11 @@ jobs:
 
       - name: Publish documentation to GitHub Pages
         uses: micronaut-projects/github-pages-deploy-action@master
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          branch: gh-pages
-          folder: build/docs
-          version: ${{ github.event.release.tag_name }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: gh-pages
+          FOLDER: build/docs
+          VERSION: ${{ github.event.release.tag_name }}
 
       - name: Package release artifacts
         run: tar -czf "odi-${RELEASE_VERSION}.tar.gz" --exclude=.git .

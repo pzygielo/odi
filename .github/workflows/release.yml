@@ -52,11 +52,14 @@ jobs:
           } >> "${GITHUB_ENV}"
 
       - name: Import signing key
+        env:
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
           set -euo pipefail
           gpg --batch --import-options import-local-sig \
             --import <(printf '%s' '${{ secrets.GPG_PRIVATE_KEY }}')
-          gpg --batch --export-secret-keys --output secring.gpg
+          gpg --batch --pinentry-mode loopback --passphrase "${GPG_PASSPHRASE}" \
+            --export-secret-keys --output secring.gpg
           chmod 600 secring.gpg
 
       - name: Run checks and publish to Maven Central

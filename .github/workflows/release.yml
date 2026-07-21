@@ -67,7 +67,10 @@ jobs:
             -Psigning.keyId="${gpg_key_id}" \
             -Psigning.password="${GPG_PASSWORD}" \
             -Psigning.secretKeyRingFile="${PWD}/secring.gpg" \
-            --no-daemon --continue
+            -Dsigning.keyId="${gpg_key_id}" \
+            -Dsigning.password="${GPG_PASSWORD}" \
+            -Dsigning.secretKeyRingFile="${PWD}/secring.gpg" \
+            --stacktrace --no-daemon --continue
 
       - name: Generate documentation
         run: ./gradlew docs -PprojectVersion="${RELEASE_VERSION#v}" --no-daemon

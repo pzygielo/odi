@@ -35,22 +35,6 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Prepare publishing secrets
-        env:
-          CENTRAL_SONATYPE_TOKEN_USERNAME: ${{ secrets.CENTRAL_SONATYPE_TOKEN_USERNAME }}
-          CENTRAL_SONATYPE_TOKEN_PASSWORD: ${{ secrets.CENTRAL_SONATYPE_TOKEN_PASSWORD }}
-          GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
-          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
-        run: |
-          set -euo pipefail
-          {
-            echo "SONATYPE_USERNAME=${CENTRAL_SONATYPE_TOKEN_USERNAME}"
-            echo "SONATYPE_PASSWORD=${CENTRAL_SONATYPE_TOKEN_PASSWORD}"
-            echo "GPG_KEY_ID=${GPG_KEY_ID}"
-            echo "GPG_PASSWORD=${GPG_PASSPHRASE}"
-          } >> "${GITHUB_ENV}"
-
       - name: Import signing key
         env:
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
@@ -64,10 +48,11 @@ jobs:
           gpg_key_id="$(gpg --batch --keyid-format short --with-colons --list-secret-keys \
             | awk -F: '$1 == "sec" { print $5; exit }')"
           test -n "${gpg_key_id}"
-          echo "GPG_KEY_ID=${gpg_key_id}" >> "${GITHUB_ENV}"
 
       - name: Run checks and publish to Maven Central
         env:
+          SONATYPE_USERNAME: ${{ secrets.CENTRAL_SONATYPE_TOKEN_USERNAME }}
+          SONATYPE_PASSWORD: ${{ secrets.CENTRAL_SONATYPE_TOKEN_PASSWORD }}
           GPG_PASSWORD: ${{ secrets.GPG_PASSPHRASE }}
         run: |
           set -euo pipefail
